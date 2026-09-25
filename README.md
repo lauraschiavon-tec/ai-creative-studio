@@ -14,7 +14,9 @@ o navegador só recebe a chave **publicável** do Supabase.
 `MUAPI_ENV=sandbox` usa a chave de teste (sem custo, resultados de exemplo). `MUAPI_ENV=production` usa a chave real.
 
 ## Catálogo de modelos
-`data/catalog.json` é gerado a partir do repositório Open-Generative-AI (`npm run catalog`, exige a pasta `scripts/_studio_src`).
+`data/catalog.json` é gerado a partir do repositório Open-Generative-AI (`npm run catalog`, exige `scripts/_studio_src`) mais `data/extra-models.json`
+(modelos da MuAPI ausentes no repositório, ex.: GPT Image 2.5; gerado por `node scripts/fetch-openapi-models.mjs`).
+Modelos em destaque ("Recomendados"): `src/config/featured.js`.
 O servidor valida todo parâmetro contra esse schema antes de chamar a MuAPI.
 
 ## Deploy

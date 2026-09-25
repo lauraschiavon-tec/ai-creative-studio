@@ -1,6 +1,6 @@
 // Gera data/catalog.json a partir do catálogo do Open-Generative-AI (MIT).
 import { t2iModels, i2iModels } from './_studio_src/models.js';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 
 const KEEP = ['type', 'title', 'description', 'enum', 'default', 'minValue', 'maxValue', 'step', 'maxItems', 'examples'];
 const simplify = (m, mode) => {
@@ -18,6 +18,10 @@ const simplify = (m, mode) => {
     hasPrompt: m.hasPrompt !== false, inputs,
   };
 };
-const image = [...t2iModels.map(m => simplify(m, 't2i')), ...i2iModels.map(m => simplify(m, 'i2i'))];
+const base = [...t2iModels.map(m => simplify(m, 't2i')), ...i2iModels.map(m => simplify(m, 'i2i'))];
+// Modelos da MuAPI ausentes no repositório (gerados por scripts/fetch-openapi-models.mjs). Só adiciona, nunca remove.
+const extra = existsSync('data/extra-models.json') ? JSON.parse(readFileSync('data/extra-models.json', 'utf8')) : [];
+const known = new Set(base.map(m => m.id));
+const image = [...base, ...extra.filter(m => !known.has(m.id))];
 writeFileSync('data/catalog.json', JSON.stringify({ image }, null, 1));
-console.log('t2i', t2iModels.length, 'i2i', i2iModels.length);
+console.log('t2i', t2iModels.length, 'i2i', i2iModels.length, '+ extras', image.length - base.length);

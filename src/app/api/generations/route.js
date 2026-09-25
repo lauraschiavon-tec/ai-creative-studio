@@ -15,7 +15,7 @@ export async function POST(req) {
   const model = getImageModel(body.catalogId);
   if (!model) return bad('Modelo desconhecido.');
   const prompt = String(body.prompt || '').trim().slice(0, 5000);
-  if (model.hasPrompt && model.mode === 't2i' && !prompt) return bad('Escreva um prompt.');
+  if (model.hasPrompt && (model.mode === 't2i' || model.promptRequired) && !prompt) return bad('Escreva um prompt.');
 
   let payload;
   try { payload = buildParams(model, body.params); } catch (e) { return bad(e.message); }

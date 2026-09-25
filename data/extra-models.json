@@ -1,0 +1,262 @@
+[
+ {
+  "id": "t2i:gpt-image-2.5-flare",
+  "modelId": "gpt-image-2.5-flare",
+  "mode": "t2i",
+  "name": "GPT Image 2.5 Flare (rápido)",
+  "endpoint": "gpt-image-2.5-flare-text-to-image",
+  "provider": "OpenAI",
+  "family": "gpt-image-2.5",
+  "imageField": null,
+  "maxImages": 0,
+  "hasPrompt": true,
+  "promptRequired": true,
+  "inputs": {
+   "prompt": {
+    "name": "prompt",
+    "type": "string",
+    "title": "Prompt"
+   },
+   "aspect_ratio": {
+    "name": "aspect_ratio",
+    "type": "string",
+    "title": "Aspect Ratio",
+    "enum": [
+     "auto",
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "16:9",
+     "9:16",
+     "21:9",
+     "27:16",
+     "16:27",
+     "9:8",
+     "8:9"
+    ],
+    "default": "auto"
+   },
+   "resolution": {
+    "name": "resolution",
+    "type": "string",
+    "title": "Resolution",
+    "enum": [
+     "1K",
+     "2K",
+     "4K"
+    ],
+    "default": "2K"
+   },
+   "quality": {
+    "name": "quality",
+    "type": "string",
+    "title": "Quality",
+    "enum": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ],
+    "default": "high"
+   }
+  }
+ },
+ {
+  "id": "t2i:gpt-image-2.5-sunburst",
+  "modelId": "gpt-image-2.5-sunburst",
+  "mode": "t2i",
+  "name": "GPT Image 2.5 Sunburst (preciso)",
+  "endpoint": "gpt-image-2.5-sunburst-text-to-image",
+  "provider": "OpenAI",
+  "family": "gpt-image-2.5",
+  "imageField": null,
+  "maxImages": 0,
+  "hasPrompt": true,
+  "promptRequired": true,
+  "inputs": {
+   "prompt": {
+    "name": "prompt",
+    "type": "string",
+    "title": "Prompt"
+   },
+   "aspect_ratio": {
+    "name": "aspect_ratio",
+    "type": "string",
+    "title": "Aspect Ratio",
+    "enum": [
+     "auto",
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "16:9",
+     "9:16",
+     "21:9",
+     "27:16",
+     "16:27",
+     "9:8",
+     "8:9"
+    ],
+    "default": "auto"
+   },
+   "resolution": {
+    "name": "resolution",
+    "type": "string",
+    "title": "Resolution",
+    "enum": [
+     "1K",
+     "2K",
+     "4K"
+    ],
+    "default": "2K"
+   },
+   "quality": {
+    "name": "quality",
+    "type": "string",
+    "title": "Quality",
+    "enum": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ],
+    "default": "high"
+   }
+  }
+ },
+ {
+  "id": "i2i:gpt-image-2.5-flare-edit",
+  "modelId": "gpt-image-2.5-flare-edit",
+  "mode": "i2i",
+  "name": "GPT Image 2.5 Flare (rápido)",
+  "endpoint": "gpt-image-2.5-flare-image-to-image",
+  "provider": "OpenAI",
+  "family": "gpt-image-2.5",
+  "imageField": "images_list",
+  "maxImages": 10,
+  "hasPrompt": true,
+  "promptRequired": true,
+  "inputs": {
+   "prompt": {
+    "name": "prompt",
+    "type": "string",
+    "title": "Prompt"
+   },
+   "aspect_ratio": {
+    "name": "aspect_ratio",
+    "type": "string",
+    "title": "Aspect Ratio",
+    "enum": [
+     "auto",
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "16:9",
+     "9:16",
+     "21:9",
+     "27:16",
+     "16:27",
+     "9:8",
+     "8:9"
+    ],
+    "default": "auto"
+   },
+   "resolution": {
+    "name": "resolution",
+    "type": "string",
+    "title": "Resolution",
+    "enum": [
+     "1K",
+     "2K",
+     "4K"
+    ],
+    "default": "2K"
+   },
+   "quality": {
+    "name": "quality",
+    "type": "string",
+    "title": "Quality",
+    "enum": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ],
+    "default": "high"
+   }
+  }
+ },
+ {
+  "id": "i2i:gpt-image-2.5-sunburst-edit",
+  "modelId": "gpt-image-2.5-sunburst-edit",
+  "mode": "i2i",
+  "name": "GPT Image 2.5 Sunburst (preciso)",
+  "endpoint": "gpt-image-2.5-sunburst-image-to-image",
+  "provider": "OpenAI",
+  "family": "gpt-image-2.5",
+  "imageField": "images_list",
+  "maxImages": 10,
+  "hasPrompt": true,
+  "promptRequired": true,
+  "inputs": {
+   "prompt": {
+    "name": "prompt",
+    "type": "string",
+    "title": "Prompt"
+   },
+   "aspect_ratio": {
+    "name": "aspect_ratio",
+    "type": "string",
+    "title": "Aspect Ratio",
+    "enum": [
+     "auto",
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "16:9",
+     "9:16",
+     "21:9",
+     "27:16",
+     "16:27",
+     "9:8",
+     "8:9"
+    ],
+    "default": "auto"
+   },
+   "resolution": {
+    "name": "resolution",
+    "type": "string",
+    "title": "Resolution",
+    "enum": [
+     "1K",
+     "2K",
+     "4K"
+    ],
+    "default": "2K"
+   },
+   "quality": {
+    "name": "quality",
+    "type": "string",
+    "title": "Quality",
+    "enum": [
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ],
+    "default": "high"
+   }
+  }
+ }
+]

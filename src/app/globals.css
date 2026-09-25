@@ -191,3 +191,14 @@ table.t td.n, table.t th.n { text-align: right; font-family: var(--font-mono); }
   .login { grid-template-columns: 1fr; } .login-art { min-height: 220px; padding: 28px; }
   .topbar { padding: 12px 16px; gap: 14px; flex-wrap: wrap; } .page { padding: 16px; }
 }
+
+/* ── Modelos recomendados ──────────────────────────── */
+.feats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.feat { text-align: left; padding: 10px 12px; border: 1.5px solid var(--ink); border-radius: var(--radius); background: var(--paper); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.feat:hover { background: #ebe3d3; }
+.feat.on { background: var(--ink); color: var(--paper); box-shadow: 3px 3px 0 var(--accent); }
+.feat .tag { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--accent); }
+.feat.on .tag { color: #e58f76; }
+.feat b { font-family: var(--font-display); font-size: 16px; font-weight: 600; line-height: 1.2; }
+.feat small { font-size: 12px; color: var(--muted); }
+.feat.on small { color: #c9bfae; }

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ParamField from './ParamField';
 import { usd, credits, STATUS, isDone, PRIMARY } from './format';
+import { FEATURED } from '@/config/featured';
 
 const HIDDEN = new Set(['prompt', 'image_url', 'images_list', 'image', 'sync_mode']);
 const MODES = [['t2i', 'Texto → Imagem'], ['i2i', 'Imagem → Imagem']];
@@ -13,9 +14,26 @@ async function api(url, opts) {
   return data;
 }
 
+// Mantém o que o usuário já escolheu quando o novo modelo aceita o mesmo valor; senão usa o padrão do modelo.
+function carryParams(prev, model) {
+  const next = {};
+  for (const [k, def] of Object.entries(model.inputs)) {
+    if (HIDDEN.has(k) || def.type === 'array') continue;
+    const v = prev[k];
+    const numeric = ['int', 'integer', 'number', 'float'].includes(def.type);
+    const ok = v !== undefined && (def.enum ? def.enum.includes(v)
+      : numeric ? typeof v === 'number' && (def.minValue === undefined || v >= def.minValue) && (def.maxValue === undefined || v <= def.maxValue)
+      : def.type === 'boolean' ? typeof v === 'boolean' : typeof v === 'string');
+    if (ok) next[k] = v; else if (def.default !== undefined) next[k] = def.default;
+  }
+  return next;
+}
+
 export default function Studio() {
   const [catalog, setCatalog] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const [featuredKey, setFeaturedKey] = useState(FEATURED.image[0].key); // null = escolhido em "Todos os modelos"
+  const [showAll, setShowAll] = useState(false);
   const [mode, setMode] = useState('t2i');
   const [search, setSearch] = useState('');
   const [modelId, setModelId] = useState(null);
@@ -33,22 +51,35 @@ export default function Studio() {
 
   useEffect(() => { api('/api/catalog').then((d) => setCatalog(d.image)).catch((e) => setLoadError(e.message)); }, []);
 
-  const models = useMemo(() => (catalog || []).filter((m) => m.mode === mode), [catalog, mode]);
+  // Recomendados: resolve, pelo endpoint, o modelo de texto e o de imagem de cada item.
+  const featured = useMemo(() => {
+    if (!catalog) return [];
+    const find = (endpoint, m) => catalog.find((c) => c.endpoint === endpoint && c.mode === m) || null;
+    return FEATURED.image
+      .map((f) => ({ ...f, textModel: find(f.text, 't2i'), imageModel: find(f.image, 'i2i') }))
+      .filter((f) => f.textModel || f.imageModel);
+  }, [catalog]);
+  const activeFeatured = featured.find((f) => f.key === featuredKey) || null;
+
+  const listModels = useMemo(() => (catalog || []).filter((m) => m.mode === mode), [catalog, mode]);
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? models.filter((m) => `${m.name} ${m.provider}`.toLowerCase().includes(q)) : models;
-  }, [models, search]);
-  const model = useMemo(() => models.find((m) => m.id === modelId) || null, [models, modelId]);
+    return q ? listModels.filter((m) => `${m.name} ${m.provider}`.toLowerCase().includes(q)) : listModels;
+  }, [listModels, search]);
 
-  useEffect(() => { if (models.length && !models.some((m) => m.id === modelId)) setModelId(models[0].id); }, [models, modelId]);
+  // Endpoint automático: com imagem de referência usa o modelo de edição; sem imagem, o de texto.
+  const model = useMemo(() => {
+    if (activeFeatured) return (files.length && activeFeatured.imageModel) || activeFeatured.textModel || activeFeatured.imageModel;
+    return (catalog || []).find((m) => m.id === modelId) || null;
+  }, [activeFeatured, files.length, catalog, modelId]);
+  const maxImages = (activeFeatured ? activeFeatured.imageModel?.maxImages : model?.maxImages) || 0;
+  const imageRequired = !activeFeatured && model?.mode === 'i2i';
 
-  // Ao trocar de modelo: mostra só os parâmetros dele, com os valores padrão.
-  useEffect(() => {
-    if (!model) return;
-    const d = {};
-    for (const [k, def] of Object.entries(model.inputs)) if (!HIDDEN.has(k) && def.type !== 'array' && def.default !== undefined) d[k] = def.default;
-    setParams(d); setFiles((f) => f.slice(0, model.maxImages || 0)); setEstimate(null);
-  }, [model]);
+  useEffect(() => { if (!activeFeatured && listModels.length && !listModels.some((m) => m.id === modelId)) setModelId(listModels[0].id); }, [activeFeatured, listModels, modelId]);
+  useEffect(() => { setFiles((f) => (f.length > maxImages ? f.slice(0, maxImages) : f)); }, [maxImages]);
+
+  const modelKey = model?.id;
+  useEffect(() => { if (model) { setParams((p) => carryParams(p, model)); setEstimate(null); } }, [modelKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fields = useMemo(() => {
     if (!model) return { main: [], adv: [] };
@@ -73,11 +104,12 @@ export default function Studio() {
   useEffect(() => {
     if (!genId || genDone) return;
     let stop = false;
+    let timer;
     const tick = async () => {
       try { const g = await api(`/api/generations/${genId}`); if (!stop) setGen(g); if (!stop && !isDone(g.status)) timer = setTimeout(tick, 2500); }
       catch (e) { if (!stop) timer = setTimeout(tick, 5000); }
     };
-    let timer = setTimeout(tick, 2000);
+    timer = setTimeout(tick, 2000);
     return () => { stop = true; clearTimeout(timer); };
   }, [genId, genDone]);
 
@@ -89,32 +121,35 @@ export default function Studio() {
   }, [gen]);
 
   const upload = useCallback(async (list) => {
-    if (!model) return;
+    if (!maxImages) return;
     setError(''); setUploading(true);
     try {
+      let count = files.length;
       for (const file of Array.from(list)) {
-        if (files.length >= model.maxImages) { setError(`Este modelo aceita no máximo ${model.maxImages} imagem(ns).`); break; }
+        if (count >= maxImages) { setError(`Este modelo aceita no máximo ${maxImages} imagem(ns) de referência.`); break; }
         const fd = new FormData(); fd.append('file', file);
         const up = await api('/api/uploads', { method: 'POST', body: fd });
-        setFiles((f) => (f.length >= model.maxImages ? f : [...f, up]));
+        count++;
+        setFiles((f) => (f.length >= maxImages ? f : [...f, up]));
       }
     } catch (e) { setError(e.message); } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
-  }, [model, files.length]);
+  }, [maxImages, files.length]);
 
   async function generate() {
     setError(''); setBusy(true);
     try {
       const g = await api('/api/generations', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ catalogId: model.id, prompt, params, inputFiles: files.map((f) => f.path) }),
+        body: JSON.stringify({ catalogId: model.id, prompt, params, inputFiles: model.mode === 'i2i' ? files.map((f) => f.path) : [] }),
       });
       setGen(g);
     } catch (e) { setError(e.message); setGen(null); } finally { setBusy(false); }
   }
 
-  const needsImage = model?.mode === 'i2i';
-  const canGenerate = model && !busy && !uploading && (!needsImage || files.length > 0) && (!model.hasPrompt || model.mode === 'i2i' || prompt.trim());
+  const promptNeeded = model?.hasPrompt && (model.mode === 't2i' || model.promptRequired);
+  const canGenerate = model && !busy && !uploading && (!imageRequired || files.length > 0) && (!promptNeeded || prompt.trim());
   const running = gen && !isDone(gen.status);
+  const pick = (id) => { setFeaturedKey(null); setModelId(id); };
 
   if (loadError) return <div className="alert">{loadError}</div>;
   if (!catalog) return <p className="muted">Carregando modelos…</p>;
@@ -123,37 +158,58 @@ export default function Studio() {
     <div className="studio">
       <div className="panel panel-pad stack">
         <section>
-          <h3 className="step"><b>1</b> Tipo de geração</h3>
-          <div className="seg">{MODES.map(([k, l]) => <button key={k} className={mode === k ? 'on' : ''} onClick={() => { setMode(k); setSearch(''); }}>{l}</button>)}</div>
-        </section>
-
-        <section>
-          <h3 className="step"><b>2</b> Modelo <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· {models.length} disponíveis</span></h3>
-          <input type="search" placeholder="Buscar modelo (Flux, Nano Banana, Seedream…)" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <div className="models" role="listbox">
-            {visible.map((m) => (
-              <button key={m.id} className={`model ${m.id === modelId ? 'on' : ''}`} onClick={() => setModelId(m.id)}>
-                <span>{m.name}</span><small>{m.provider}</small>
+          <h3 className="step"><b>1</b> Modelo</h3>
+          <div className="feats" role="listbox" aria-label="Modelos recomendados">
+            {featured.map((f) => (
+              <button key={f.key} className={`feat ${f.key === featuredKey ? 'on' : ''}`} onClick={() => setFeaturedKey(f.key)}>
+                <span className="tag">Recomendado</span>
+                <b>{f.label}</b>
+                <small>{f.provider}{f.note ? ` · ${f.note}` : ''}</small>
               </button>
             ))}
-            {!visible.length && <div className="hint" style={{ padding: 12 }}>Nenhum modelo encontrado.</div>}
           </div>
+
+          {activeFeatured && model && (
+            <p className="hint" style={{ marginTop: 10 }}>
+              {files.length ? 'Com imagem de referência: usando o modelo de edição' : 'Sem imagem de referência: usando geração por texto'}
+              {' '}<span className="mono">({model.endpoint})</span>
+            </p>
+          )}
+
+          <details className="adv" style={{ marginTop: 14 }} open={showAll || (!activeFeatured && !!model)} onToggle={(e) => setShowAll(e.currentTarget.open)}>
+            <summary>Todos os modelos ({catalog.length})</summary>
+            <div className="seg small" style={{ marginBottom: 10 }}>
+              {MODES.map(([k, l]) => <button key={k} className={mode === k ? 'on' : ''} onClick={() => { setMode(k); setSearch(''); }}>{l}</button>)}
+            </div>
+            <input type="search" placeholder="Buscar modelo (Flux, Ideogram, Recraft…)" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <div className="models" role="listbox" aria-label="Todos os modelos">
+              {visible.map((m) => (
+                <button key={m.id} className={`model ${!activeFeatured && m.id === modelId ? 'on' : ''}`} onClick={() => pick(m.id)}>
+                  <span>{m.name}</span><small>{m.provider}</small>
+                </button>
+              ))}
+              {!visible.length && <div className="hint" style={{ padding: 12 }}>Nenhum modelo encontrado.</div>}
+            </div>
+          </details>
         </section>
 
         {model && (
           <section className="stack">
-            <h3 className="step"><b>3</b> Conteúdo e parâmetros</h3>
+            <h3 className="step"><b>2</b> Conteúdo e parâmetros</h3>
 
-            {needsImage && (
+            {maxImages > 0 && (
               <div>
-                <div className="lbl" style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Imagem de referência <span className="muted" style={{ fontWeight: 400 }}>({files.length}/{model.maxImages})</span></div>
-                {files.length < model.maxImages && (
+                <div className="lbl" style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Imagem de referência{' '}
+                  <span className="muted" style={{ fontWeight: 400 }}>({files.length}/{maxImages}){!imageRequired && ' · opcional'}</span>
+                </div>
+                {files.length < maxImages && (
                   <div className="drop" onClick={() => fileRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); upload(e.dataTransfer.files); }}>
                     {uploading ? 'Enviando…' : 'Clique ou arraste uma imagem (PNG, JPG, WebP · até 10 MB)'}
                   </div>
                 )}
-                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple={model.maxImages > 1} hidden onChange={(e) => upload(e.target.files)} />
+                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple={maxImages > 1} hidden onChange={(e) => upload(e.target.files)} />
                 {!!files.length && (
                   <div className="thumbs">
                     {files.map((f) => (
@@ -166,8 +222,8 @@ export default function Studio() {
             )}
 
             {model.hasPrompt && (
-              <label className="field"><span className="lbl">Prompt {needsImage && <span>opcional</span>}</span>
-                <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Descreva a imagem que você quer…" /></label>
+              <label className="field"><span className="lbl">Prompt {!promptNeeded && <span>opcional</span>}</span>
+                <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={files.length ? 'Descreva a edição que você quer…' : 'Descreva a imagem que você quer…'} /></label>
             )}
 
             {fields.main.map(([k, def]) => <ParamField key={k} name={k} def={def} value={params[k]} onChange={(v) => setParams((p) => ({ ...p, [k]: v }))} />)}
@@ -195,7 +251,7 @@ export default function Studio() {
           {!gen && (
             <div className="canvas-empty">
               <h2>Sua mesa está vazia.</h2>
-              <p>Escolha um modelo, descreva o que precisa e clique em <b>Gerar</b>. O resultado aparece aqui, já com custo e opção de download.</p>
+              <p>Escolha um modelo, descreva o que precisa e clique em <b>Gerar</b>. Se enviar uma imagem de referência, usamos automaticamente o modelo de edição.</p>
             </div>
           )}
           {gen && !isDone(gen.status) && (
@@ -219,7 +275,7 @@ export default function Studio() {
                 ))}
               </div>
               <div className="meta">
-                <span>Modelo <b>{gen.model_name}</b></span>
+                <span>Modelo <b>{gen.model_name}</b> <span className="mono">({gen.endpoint})</span></span>
                 <span>Custo <b className="mono">{usd(gen.cost_usd)}</b> · <span className="mono">{credits(gen.cost_credits)}</span></span>
                 {gen.sandbox && <span className="badge sand">Sandbox · resultado de exemplo</span>}
               </div>
