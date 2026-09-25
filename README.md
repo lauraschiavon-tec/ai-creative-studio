@@ -14,10 +14,16 @@ o navegador só recebe a chave **publicável** do Supabase.
 `MUAPI_ENV=sandbox` usa a chave de teste (sem custo, resultados de exemplo). `MUAPI_ENV=production` usa a chave real.
 
 ## Catálogo de modelos
-`data/catalog.json` é gerado a partir do repositório Open-Generative-AI (`npm run catalog`, exige `scripts/_studio_src`) mais `data/extra-models.json`
-(modelos da MuAPI ausentes no repositório, ex.: GPT Image 2.5; gerado por `node scripts/fetch-openapi-models.mjs`).
-Modelos em destaque ("Recomendados"): `src/config/featured.js`.
-O servidor valida todo parâmetro contra esse schema antes de chamar a MuAPI.
+`data/catalog.json` é gerado direto do **OpenAPI atual da MuAPI** (`npm run catalog`; não depende mais do repositório Open-Generative-AI).
+Cada endpoint vira um modelo com seu schema (parâmetros, enums, limites) e campos de mídia (imagem/vídeo/áudio); o servidor valida
+todo pedido contra esse schema antes de chamar a MuAPI. Rode `npm run catalog` de tempos em tempos para trazer modelos novos.
+Modelos em destaque ("Recomendados") ficam em `src/config/studios.js`; todo o resto continua em "Todos os modelos".
 
 ## Deploy
 Docker: `docker compose up -d --build` (com `.env.production`). Node/PM2: ver `ecosystem.config.cjs`. Coloque Nginx/Caddy com HTTPS na frente.
+
+## Estado do catálogo (validado em Sandbox)
+Todos os 562 endpoints de imagem e vídeo do OpenAPI foram exercitados em Sandbox: 536 concluem. Os demais dependem da MuAPI/conta:
+endpoints listados no OpenAPI que respondem 404 (ex.: `veo3.1-extend-video`, `grok-imagine-extend`, `*-vip-extend`), um que recusa a chave
+(`seedance-2.0-watermark-remover`), mocks de Sandbox sem arquivo (`luma-modify-video`, `runway-aleph-v2v`) e treinadores de LoRA, que pedem uma URL de dataset.
+Confirme com a chave de Produção antes de contar com esses.

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "catalog": "node scripts/build-catalog.mjs",
+    "catalog": "node scripts/sync-catalog.mjs",
     "create-user": "node --env-file=.env.local scripts/create-user.mjs",
     "setup-storage": "node --env-file=.env.local scripts/setup-storage.mjs"
   },

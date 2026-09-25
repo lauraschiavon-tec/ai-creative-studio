@@ -1,6 +1,6 @@
 import { apiSession } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { getImageModel, buildParams } from '@/lib/catalog';
+import { getModel, isStudio, buildParams } from '@/lib/catalog';
 import { submit, isSandbox, MuapiError } from '@/lib/muapi';
 import { extractCost, syncGeneration, withSignedUrls } from '@/lib/generations';
 
@@ -12,35 +12,42 @@ export async function POST(req) {
   let body;
   try { body = await req.json(); } catch { return bad('Requisição inválida.'); }
 
-  const model = getImageModel(body.catalogId);
+  const studio = isStudio(body.studio) ? body.studio : 'image';
+  const model = getModel(studio, body.catalogId);
   if (!model) return bad('Modelo desconhecido.');
   const prompt = String(body.prompt || '').trim().slice(0, 5000);
-  if (model.hasPrompt && (model.mode === 't2i' || model.promptRequired) && !prompt) return bad('Escreva um prompt.');
+  if (model.hasPrompt && model.promptRequired && !prompt) return bad('Escreva um prompt.');
 
   let payload;
   try { payload = buildParams(model, body.params); } catch (e) { return bad(e.message); }
-  if (prompt) payload.prompt = prompt;
+  if (model.hasPrompt && prompt) payload.prompt = prompt;
 
-  // Imagens de referência: só caminhos do próprio usuário no bucket "uploads".
-  const files = Array.isArray(body.inputFiles) ? body.inputFiles : [];
-  if (model.mode === 'i2i') {
-    if (!files.length) return bad('Envie ao menos uma imagem de referência.');
-    if (files.length > model.maxImages) return bad(`Este modelo aceita no máximo ${model.maxImages} imagem(ns).`);
-    if (!files.every((p) => typeof p === 'string' && p.startsWith(`${s.user.id}/`) && !p.includes('..'))) return bad('Arquivo inválido.');
-    const sb = supabaseAdmin();
+  // Mídias de referência: só caminhos do próprio usuário no bucket "uploads", nos campos que o modelo declara.
+  const admin = supabaseAdmin();
+  const inputFiles = [];
+  const sent = body.media && typeof body.media === 'object' ? body.media : {};
+  for (const def of model.media) {
+    const paths = Array.isArray(sent[def.name]) ? sent[def.name] : [];
+    if (!paths.length) { if (def.required) return bad(`Envie: ${def.title}.`); continue; }
+    const max = def.array ? def.maxItems || 20 : 1;
+    if (paths.length > max) return bad(`"${def.title}" aceita no máximo ${max} arquivo(s).`);
+    if (!paths.every((p) => typeof p === 'string' && p.startsWith(`${s.user.id}/`) && !p.includes('..'))) return bad('Arquivo inválido.');
     const urls = [];
-    for (const p of files) {
-      const { data } = await sb.storage.from('atelie-uploads').createSignedUrl(p, 6 * 3600);
-      if (!data?.signedUrl) return bad('Não foi possível ler a imagem enviada.');
+    for (const p of paths) {
+      let { data } = await admin.storage.from('atelie-uploads').createSignedUrl(p, 6 * 3600);
+      if (!data?.signedUrl) ({ data } = await admin.storage.from('atelie-uploads').createSignedUrl(p, 6 * 3600)); // 1 nova tentativa (falha transitória)
+      if (!data?.signedUrl) return bad('Não foi possível ler o arquivo enviado.');
       urls.push(data.signedUrl);
+      inputFiles.push({ field: def.name, kind: def.kind, path: p });
     }
-    payload[model.imageField] = model.imageField.endsWith('_list') || model.maxImages > 1 ? urls : urls[0];
+    payload[def.name] = def.array ? urls : urls[0];
   }
 
-  const admin = supabaseAdmin();
+  if (model.needsMedia && !inputFiles.length && !payload.draft_request_id) return bad('Este modelo exige ao menos uma mídia de referência.');
+
   const { data: row, error: insErr } = await admin.from('atelie_generations').insert({
-    user_id: s.user.id, studio: 'image', mode: model.mode, model_id: model.modelId, model_name: model.name,
-    endpoint: model.endpoint, prompt, params: body.params || {}, input_files: model.mode === 'i2i' ? files : [],
+    user_id: s.user.id, studio, mode: model.mode, model_id: model.id, model_name: model.name,
+    endpoint: model.endpoint, prompt, params: body.params || {}, input_files: inputFiles,
     sandbox: isSandbox(), status: 'pending',
   }).select().single();
   if (insErr) return bad('Não foi possível registrar a geração.', 500);
@@ -63,14 +70,16 @@ export async function POST(req) {
   }
 }
 
-// Histórico do próprio usuário (paginado por cursor de data).
+// Histórico do próprio usuário (paginado por cursor de data). ?studio=image|video filtra.
 export async function GET(req) {
   const s = await apiSession();
   if (s.error) return s.error;
   const url = new URL(req.url);
   const limit = Math.min(Number(url.searchParams.get('limit')) || 24, 60);
   const before = url.searchParams.get('before');
+  const studio = url.searchParams.get('studio');
   let q = supabaseAdmin().from('atelie_generations').select('*').eq('user_id', s.user.id).order('created_at', { ascending: false }).limit(limit);
+  if (isStudio(studio)) q = q.eq('studio', studio);
   if (before) q = q.lt('created_at', before);
   const { data, error } = await q;
   if (error) return bad('Falha ao carregar o histórico.', 500);

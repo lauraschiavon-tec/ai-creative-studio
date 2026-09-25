@@ -13,10 +13,10 @@ export const STATUS = {
 export const isDone = (s) => s === 'completed' || s === 'failed';
 
 const LABELS = {
-  aspect_ratio: 'Proporção', resolution: 'Resolução', quality: 'Qualidade', num_images: 'Nº de imagens', width: 'Largura',
+  aspect_ratio: 'Proporção', duration: 'Duração (s)', generate_audio: 'Gerar áudio', camera_fixed: 'Câmera fixa', mode: 'Modo', high_bitrate: 'Alta taxa de bits', draft: 'Rascunho (mais barato)', resolution: 'Resolução', quality: 'Qualidade', num_images: 'Nº de imagens', width: 'Largura',
   height: 'Altura', seed: 'Seed', negative_prompt: 'Prompt negativo', output_format: 'Formato de saída', guidance_scale: 'Guidance',
   num_inference_steps: 'Passos', strength: 'Intensidade', style: 'Estilo', safety_tolerance: 'Tolerância de segurança',
   enable_safety_checker: 'Filtro de segurança', prompt_enhancer: 'Melhorar prompt', enable_prompt_expansion: 'Expandir prompt',
 };
 export const paramLabel = (key, def) => LABELS[key] || def?.title || key.replace(/_/g, ' ');
-export const PRIMARY = ['aspect_ratio', 'resolution', 'quality', 'num_images', 'width', 'height'];
+export const PRIMARY = ['aspect_ratio', 'resolution', 'duration', 'quality', 'generate_audio', 'num_images', 'num_videos', 'width', 'height'];

@@ -7,7 +7,7 @@ export async function GET(req) {
   if (s.error) return s.error;
   const month = new URL(req.url).searchParams.get('month'); // YYYY-MM opcional
   const sb = supabaseAdmin();
-  let q = sb.from('atelie_generations').select('user_id,model_name,status,cost_usd,cost_credits,sandbox,created_at').order('created_at', { ascending: false }).limit(20000);
+  let q = sb.from('atelie_generations').select('user_id,studio,model_name,status,cost_usd,cost_credits,sandbox,created_at').order('created_at', { ascending: false }).limit(20000);
   if (/^\d{4}-\d{2}$/.test(month || '')) {
     const start = new Date(`${month}-01T00:00:00Z`);
     const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
@@ -27,11 +27,14 @@ export async function GET(req) {
   const total = { real: acc(), sandbox: acc() };
   const byUser = new Map();
   const byModel = new Map();
+  const byStudio = new Map();
   for (const r of rows) {
     add(r.sandbox ? total.sandbox : total.real, r);
     if (r.sandbox) continue;
     if (!byUser.has(r.user_id)) byUser.set(r.user_id, acc());
     add(byUser.get(r.user_id), r);
+    if (!byStudio.has(r.studio)) byStudio.set(r.studio, acc());
+    add(byStudio.get(r.studio), r);
     if (!byModel.has(r.model_name)) byModel.set(r.model_name, acc());
     add(byModel.get(r.model_name), r);
   }
@@ -39,6 +42,7 @@ export async function GET(req) {
   return Response.json({
     total,
     users: [...byUser].map(([id, v]) => ({ ...v, id, email: pmap.get(id)?.email, name: pmap.get(id)?.full_name })).sort((a, b) => b.usd - a.usd),
+    studios: [...byStudio].map(([name, v]) => ({ ...v, name })).sort((a, b) => b.usd - a.usd),
     models: [...byModel].map(([name, v]) => ({ ...v, name })).sort((a, b) => b.usd - a.usd),
   });
 }

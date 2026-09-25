@@ -1,11 +1,9 @@
 'use client';
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ParamField from './ParamField';
+import MediaField from './MediaField';
 import { usd, credits, STATUS, isDone, PRIMARY } from './format';
-import { FEATURED } from '@/config/featured';
-
-const HIDDEN = new Set(['prompt', 'image_url', 'images_list', 'image', 'sync_mode']);
-const MODES = [['t2i', 'Texto → Imagem'], ['i2i', 'Imagem → Imagem']];
+import { STUDIOS, FEATURED, MODE_LABEL } from '@/config/studios';
 
 async function api(url, opts) {
   const res = await fetch(url, opts);
@@ -18,72 +16,85 @@ async function api(url, opts) {
 function carryParams(prev, model) {
   const next = {};
   for (const [k, def] of Object.entries(model.inputs)) {
-    if (HIDDEN.has(k) || def.type === 'array') continue;
     const v = prev[k];
     const numeric = ['int', 'integer', 'number', 'float'].includes(def.type);
     const ok = v !== undefined && (def.enum ? def.enum.includes(v)
       : numeric ? typeof v === 'number' && (def.minValue === undefined || v >= def.minValue) && (def.maxValue === undefined || v <= def.maxValue)
       : def.type === 'boolean' ? typeof v === 'boolean' : typeof v === 'string');
-    if (ok) next[k] = v; else if (def.default !== undefined) next[k] = def.default;
+    if (ok) next[k] = v;
+    else if (def.default !== undefined) next[k] = def.default;
+    else if (def.required && def.enum) next[k] = def.enum[0];            // obrigatório sem padrão: pré-seleciona a 1ª opção
+    else if (def.required && numeric && def.minValue !== undefined) next[k] = def.minValue;
   }
   return next;
 }
 
-export default function Studio() {
+export default function Studio({ studio }) {
+  const cfg = STUDIOS[studio];
   const [catalog, setCatalog] = useState(null);
   const [loadError, setLoadError] = useState('');
-  const [featuredKey, setFeaturedKey] = useState(FEATURED.image[0].key); // null = escolhido em "Todos os modelos"
+  const [mode, setMode] = useState('auto');
+  const [selection, setSelection] = useState(null); // { type: 'featured', key } | { type: 'model', id }
   const [showAll, setShowAll] = useState(false);
-  const [mode, setMode] = useState('t2i');
   const [search, setSearch] = useState('');
-  const [modelId, setModelId] = useState(null);
   const [prompt, setPrompt] = useState('');
   const [params, setParams] = useState({});
-  const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
+  const [media, setMedia] = useState({});
   const [gen, setGen] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [estimate, setEstimate] = useState(null);
   const [sessionCost, setSessionCost] = useState({ usd: 0, credits: 0, n: 0 });
-  const fileRef = useRef(null);
   const counted = useRef(new Set());
 
-  useEffect(() => { api('/api/catalog').then((d) => setCatalog(d.image)).catch((e) => setLoadError(e.message)); }, []);
+  useEffect(() => {
+    api(`/api/catalog?studio=${studio}`).then((d) => setCatalog(d.models)).catch((e) => setLoadError(e.message));
+  }, [studio]);
 
-  // Recomendados: resolve, pelo endpoint, o modelo de texto e o de imagem de cada item.
-  const featured = useMemo(() => {
-    if (!catalog) return [];
-    const find = (endpoint, m) => catalog.find((c) => c.endpoint === endpoint && c.mode === m) || null;
-    return FEATURED.image
-      .map((f) => ({ ...f, textModel: find(f.text, 't2i'), imageModel: find(f.image, 'i2i') }))
-      .filter((f) => f.textModel || f.imageModel);
-  }, [catalog]);
-  const activeFeatured = featured.find((f) => f.key === featuredKey) || null;
+  const byId = useMemo(() => new Map((catalog || []).map((m) => [m.id, m])), [catalog]);
+  const modeIds = mode === 'auto' ? cfg.auto : [mode];
 
-  const listModels = useMemo(() => (catalog || []).filter((m) => m.mode === mode), [catalog, mode]);
+  // Recomendados que têm endpoint no modo atual (resolvidos pelo catálogo sincronizado).
+  const featuredList = useMemo(() => FEATURED[studio]
+    .map((f) => ({ ...f, models: Object.fromEntries(Object.entries(f.modes).map(([m, ep]) => [m, byId.get(ep)]).filter(([, v]) => v)) }))
+    .filter((f) => modeIds.some((m) => f.models[m])), [studio, byId, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const listAll = useMemo(() => (catalog || []).filter((m) => modeIds.includes(m.mode)), [catalog, mode]); // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? listModels.filter((m) => `${m.name} ${m.provider}`.toLowerCase().includes(q)) : listModels;
-  }, [listModels, search]);
+    return q ? listAll.filter((m) => `${m.name} ${m.provider} ${m.id}`.toLowerCase().includes(q)) : listAll;
+  }, [listAll, search]);
 
-  // Endpoint automático: com imagem de referência usa o modelo de edição; sem imagem, o de texto.
+  // Seleção efetiva (com fallback quando o modo muda e a seleção deixa de existir).
+  const pickedFeatured = selection?.type === 'featured' ? featuredList.find((f) => f.key === selection.key) : null;
+  const pickedModel = selection?.type === 'model' ? listAll.find((m) => m.id === selection.id) : null;
+  const activeFeatured = pickedFeatured || (!pickedModel ? featuredList[0] || null : null);
+  const listModel = pickedModel || (!activeFeatured ? listAll[0] || null : null);
+
+  const autoMode = mode === 'auto' && !!activeFeatured;
+  const [firstMode, secondMode] = cfg.auto;
+  const defs = useMemo(() => {
+    if (autoMode) return (activeFeatured.models[secondMode] || activeFeatured.models[firstMode])?.media || [];
+    if (activeFeatured) return activeFeatured.models[mode]?.media || [];
+    return listModel?.media || [];
+  }, [autoMode, activeFeatured, listModel, mode, firstMode, secondMode]);
+  const hasFiles = defs.some((d) => (media[d.name] || []).length > 0);
+
+  // Endpoint automático: com mídia de referência usa o modo "com entrada" (ex.: edição); sem mídia, o de texto.
   const model = useMemo(() => {
-    if (activeFeatured) return (files.length && activeFeatured.imageModel) || activeFeatured.textModel || activeFeatured.imageModel;
-    return (catalog || []).find((m) => m.id === modelId) || null;
-  }, [activeFeatured, files.length, catalog, modelId]);
-  const maxImages = (activeFeatured ? activeFeatured.imageModel?.maxImages : model?.maxImages) || 0;
-  const imageRequired = !activeFeatured && model?.mode === 'i2i';
-
-  useEffect(() => { if (!activeFeatured && listModels.length && !listModels.some((m) => m.id === modelId)) setModelId(listModels[0].id); }, [activeFeatured, listModels, modelId]);
-  useEffect(() => { setFiles((f) => (f.length > maxImages ? f.slice(0, maxImages) : f)); }, [maxImages]);
+    if (activeFeatured) {
+      if (autoMode) return (hasFiles && activeFeatured.models[secondMode]) || activeFeatured.models[firstMode] || activeFeatured.models[secondMode];
+      return activeFeatured.models[mode];
+    }
+    return listModel;
+  }, [activeFeatured, autoMode, hasFiles, listModel, mode, firstMode, secondMode]);
 
   const modelKey = model?.id;
   useEffect(() => { if (model) { setParams((p) => carryParams(p, model)); setEstimate(null); } }, [modelKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fields = useMemo(() => {
     if (!model) return { main: [], adv: [] };
-    const all = Object.entries(model.inputs).filter(([k, def]) => !HIDDEN.has(k) && k !== model.imageField && def.type !== 'array');
+    const all = Object.entries(model.inputs);
     return { main: all.filter(([k]) => PRIMARY.includes(k)), adv: all.filter(([k]) => !PRIMARY.includes(k)) };
   }, [model]);
 
@@ -92,22 +103,21 @@ export default function Studio() {
     if (!model) return;
     setEstimate(null);
     const t = setTimeout(() => {
-      api('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ catalogId: model.id, prompt, params }) })
+      api('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studio, catalogId: model.id, prompt, params }) })
         .then(setEstimate).catch(() => setEstimate({ available: false }));
     }, 700);
     return () => clearTimeout(t);
-  }, [model, params, prompt]);
+  }, [model, params, prompt, studio]);
 
   // Acompanha a geração até terminar.
   const genId = gen?.id;
   const genDone = gen ? isDone(gen.status) : true;
   useEffect(() => {
     if (!genId || genDone) return;
-    let stop = false;
-    let timer;
+    let stop = false; let timer;
     const tick = async () => {
-      try { const g = await api(`/api/generations/${genId}`); if (!stop) setGen(g); if (!stop && !isDone(g.status)) timer = setTimeout(tick, 2500); }
-      catch (e) { if (!stop) timer = setTimeout(tick, 5000); }
+      try { const g = await api(`/api/generations/${genId}`); if (!stop) setGen(g); if (!stop && !isDone(g.status)) timer = setTimeout(tick, 3000); }
+      catch { if (!stop) timer = setTimeout(tick, 6000); }
     };
     timer = setTimeout(tick, 2000);
     return () => { stop = true; clearTimeout(timer); };
@@ -120,36 +130,25 @@ export default function Studio() {
     }
   }, [gen]);
 
-  const upload = useCallback(async (list) => {
-    if (!maxImages) return;
-    setError(''); setUploading(true);
-    try {
-      let count = files.length;
-      for (const file of Array.from(list)) {
-        if (count >= maxImages) { setError(`Este modelo aceita no máximo ${maxImages} imagem(ns) de referência.`); break; }
-        const fd = new FormData(); fd.append('file', file);
-        const up = await api('/api/uploads', { method: 'POST', body: fd });
-        count++;
-        setFiles((f) => (f.length >= maxImages ? f : [...f, up]));
-      }
-    } catch (e) { setError(e.message); } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
-  }, [maxImages, files.length]);
-
   async function generate() {
     setError(''); setBusy(true);
     try {
-      const g = await api('/api/generations', {
+      const sent = {};
+      for (const d of model.media) if ((media[d.name] || []).length) sent[d.name] = media[d.name].map((f) => f.path);
+      setGen(await api('/api/generations', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ catalogId: model.id, prompt, params, inputFiles: model.mode === 'i2i' ? files.map((f) => f.path) : [] }),
-      });
-      setGen(g);
+        body: JSON.stringify({ studio, catalogId: model.id, prompt, params, media: sent }),
+      }));
     } catch (e) { setError(e.message); setGen(null); } finally { setBusy(false); }
   }
 
-  const promptNeeded = model?.hasPrompt && (model.mode === 't2i' || model.promptRequired);
-  const canGenerate = model && !busy && !uploading && (!imageRequired || files.length > 0) && (!promptNeeded || prompt.trim());
+  const promptNeeded = model?.hasPrompt && model.promptRequired;
+  const anyFile = model ? model.media.some((d) => (media[d.name] || []).length > 0) : false;
+  const missingMedia = model ? (model.media.some((d) => d.required && !(media[d.name] || []).length)
+    || (model.needsMedia && !anyFile && !params.draft_request_id)) : false;
+  const canGenerate = model && !busy && !missingMedia && (!promptNeeded || prompt.trim());
   const running = gen && !isDone(gen.status);
-  const pick = (id) => { setFeaturedKey(null); setModelId(id); };
+  const verb = studio === 'video' ? 'vídeo' : 'imagem';
 
   if (loadError) return <div className="alert">{loadError}</div>;
   if (!catalog) return <p className="muted">Carregando modelos…</p>;
@@ -158,72 +157,64 @@ export default function Studio() {
     <div className="studio">
       <div className="panel panel-pad stack">
         <section>
-          <h3 className="step"><b>1</b> Modelo</h3>
-          <div className="feats" role="listbox" aria-label="Modelos recomendados">
-            {featured.map((f) => (
-              <button key={f.key} className={`feat ${f.key === featuredKey ? 'on' : ''}`} onClick={() => setFeaturedKey(f.key)}>
-                <span className="tag">Recomendado</span>
-                <b>{f.label}</b>
-                <small>{f.provider}{f.note ? ` · ${f.note}` : ''}</small>
-              </button>
+          <h3 className="step"><b>1</b> Tipo de geração</h3>
+          <div className="chips">
+            <button className={`chip ${mode === 'auto' ? 'on' : ''}`} onClick={() => { setMode('auto'); setSelection(null); setSearch(''); }}>Automático</button>
+            {cfg.modes.map(([id, label]) => (
+              <button key={id} className={`chip ${mode === id ? 'on' : ''}`} onClick={() => { setMode(id); setSelection(null); setSearch(''); }}>{label}</button>
             ))}
           </div>
+          {mode === 'auto' && <p className="hint">Usa texto → {verb}; se você enviar uma mídia de referência, troca sozinho para o endpoint com entrada.</p>}
+        </section>
 
+        <section>
+          <h3 className="step"><b>2</b> Modelo</h3>
+          {!!featuredList.length && (
+            <div className="feats" role="listbox" aria-label="Modelos recomendados">
+              {featuredList.map((f) => (
+                <button key={f.key} className={`feat ${activeFeatured?.key === f.key ? 'on' : ''}`} onClick={() => setSelection({ type: 'featured', key: f.key })}>
+                  <span className="tag">Recomendado</span>
+                  <b>{f.label}</b>
+                  <small>{f.provider}{f.note ? ` · ${f.note}` : ''}</small>
+                </button>
+              ))}
+            </div>
+          )}
           {activeFeatured && model && (
             <p className="hint" style={{ marginTop: 10 }}>
-              {files.length ? 'Com imagem de referência: usando o modelo de edição' : 'Sem imagem de referência: usando geração por texto'}
-              {' '}<span className="mono">({model.endpoint})</span>
+              {autoMode ? (hasFiles ? 'Com mídia de referência: ' : 'Sem mídia de referência: ') : ''}usando <b>{model.name}</b> <span className="mono">({model.endpoint})</span>
             </p>
           )}
 
-          <details className="adv" style={{ marginTop: 14 }} open={showAll || (!activeFeatured && !!model)} onToggle={(e) => setShowAll(e.currentTarget.open)}>
-            <summary>Todos os modelos ({catalog.length})</summary>
-            <div className="seg small" style={{ marginBottom: 10 }}>
-              {MODES.map(([k, l]) => <button key={k} className={mode === k ? 'on' : ''} onClick={() => { setMode(k); setSearch(''); }}>{l}</button>)}
-            </div>
-            <input type="search" placeholder="Buscar modelo (Flux, Ideogram, Recraft…)" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <details className="adv" style={{ marginTop: 14 }} open={showAll || (!activeFeatured && !!listModel)} onToggle={(e) => setShowAll(e.currentTarget.open)}>
+            <summary>Todos os modelos ({listAll.length})</summary>
+            <input type="search" placeholder="Buscar modelo (Kling, Veo, Flux, Ideogram…)" value={search} onChange={(e) => setSearch(e.target.value)} />
             <div className="models" role="listbox" aria-label="Todos os modelos">
               {visible.map((m) => (
-                <button key={m.id} className={`model ${!activeFeatured && m.id === modelId ? 'on' : ''}`} onClick={() => pick(m.id)}>
-                  <span>{m.name}</span><small>{m.provider}</small>
+                <button key={m.id} className={`model ${!activeFeatured && listModel?.id === m.id ? 'on' : ''}`} onClick={() => setSelection({ type: 'model', id: m.id })}>
+                  <span>{m.name}</span><small>{m.provider}{mode === 'auto' ? ` · ${MODE_LABEL[m.mode]}` : ''}</small>
                 </button>
               ))}
               {!visible.length && <div className="hint" style={{ padding: 12 }}>Nenhum modelo encontrado.</div>}
             </div>
           </details>
+          {!activeFeatured && !listAll.length && <p className="hint">Nenhum modelo neste tipo de geração.</p>}
         </section>
 
         {model && (
           <section className="stack">
-            <h3 className="step"><b>2</b> Conteúdo e parâmetros</h3>
+            <h3 className="step"><b>3</b> Conteúdo e parâmetros</h3>
 
-            {maxImages > 0 && (
-              <div>
-                <div className="lbl" style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                  Imagem de referência{' '}
-                  <span className="muted" style={{ fontWeight: 400 }}>({files.length}/{maxImages}){!imageRequired && ' · opcional'}</span>
-                </div>
-                {files.length < maxImages && (
-                  <div className="drop" onClick={() => fileRef.current?.click()}
-                    onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); upload(e.dataTransfer.files); }}>
-                    {uploading ? 'Enviando…' : 'Clique ou arraste uma imagem (PNG, JPG, WebP · até 10 MB)'}
-                  </div>
-                )}
-                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple={maxImages > 1} hidden onChange={(e) => upload(e.target.files)} />
-                {!!files.length && (
-                  <div className="thumbs">
-                    {files.map((f) => (
-                      <div className="thumb" key={f.path}><img src={f.previewUrl} alt={f.name} />
-                        <button aria-label="Remover" onClick={() => setFiles((l) => l.filter((x) => x.path !== f.path))}>×</button></div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            {model.needsMedia && !autoMode && <div className="notice">Este modelo exige ao menos uma mídia de referência.</div>}
+            {defs.map((d) => (
+              <MediaField key={d.name} def={d} showRequired={!autoMode} files={media[d.name] || []} onError={setError}
+                onChange={(list) => setMedia((m) => ({ ...m, [d.name]: list }))} />
+            ))}
 
             {model.hasPrompt && (
               <label className="field"><span className="lbl">Prompt {!promptNeeded && <span>opcional</span>}</span>
-                <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={files.length ? 'Descreva a edição que você quer…' : 'Descreva a imagem que você quer…'} /></label>
+                <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={hasFiles ? `Descreva o que fazer com a mídia enviada…` : `Descreva o ${verb} que você quer…`} /></label>
             )}
 
             {fields.main.map(([k, def]) => <ParamField key={k} name={k} def={def} value={params[k]} onChange={(v) => setParams((p) => ({ ...p, [k]: v }))} />)}
@@ -232,6 +223,7 @@ export default function Studio() {
                 <div className="stack">{fields.adv.map(([k, def]) => <ParamField key={k} name={k} def={def} value={params[k]} onChange={(v) => setParams((p) => ({ ...p, [k]: v }))} />)}</div>
               </details>
             )}
+            {model.limited && <div className="notice">Este modelo tem campos que a interface ainda não suporta; a geração pode ser recusada pela MuAPI.</div>}
           </section>
         )}
 
@@ -242,7 +234,7 @@ export default function Studio() {
             <span className="big">{estimate === null ? '…' : estimate.available ? usd(estimate.usd) : <span className="muted" style={{ fontSize: 13, fontWeight: 400, fontFamily: 'var(--font-body)' }}>indisponível</span>}</span>
           </div>
           {error && <div className="alert" role="alert">{error}</div>}
-          <button className="btn primary block" disabled={!canGenerate} onClick={generate}>{busy ? 'Enviando…' : running ? 'Gerar outra' : 'Gerar'}</button>
+          <button className="btn primary block" disabled={!canGenerate} onClick={generate}>{busy ? 'Enviando…' : running ? 'Gerar outro' : 'Gerar'}</button>
         </section>
       </div>
 
@@ -251,11 +243,12 @@ export default function Studio() {
           {!gen && (
             <div className="canvas-empty">
               <h2>Sua mesa está vazia.</h2>
-              <p>Escolha um modelo, descreva o que precisa e clique em <b>Gerar</b>. Se enviar uma imagem de referência, usamos automaticamente o modelo de edição.</p>
+              <p>Escolha o tipo, o modelo, descreva o que precisa e clique em <b>Gerar</b>. O resultado aparece aqui, com custo e download.</p>
             </div>
           )}
           {gen && !isDone(gen.status) && (
-            <div className="developing"><div className="lbl">Revelando…<small>{STATUS[gen.status]?.[0]} · {gen.model_name}</small></div></div>
+            <div className="developing"><div className="lbl">Revelando…<small>{STATUS[gen.status]?.[0]} · {gen.model_name}</small>
+              {studio === 'video' && <small>Vídeos levam alguns minutos. Pode sair: o resultado fica no Histórico.</small>}</div></div>
           )}
           {gen?.status === 'failed' && (
             <div style={{ maxWidth: 460 }} className="stack">
@@ -268,8 +261,8 @@ export default function Studio() {
               <div className="outs">
                 {gen.outputs.map((o, i) => (
                   <figure className="out" key={i} style={{ margin: 0 }}>
-                    {/\.(mp4|webm|mov)/i.test(o.url) ? <video src={o.url} controls /> : <img src={o.url} alt={gen.prompt || gen.model_name} />}
-                    <figcaption className="out-actions"><span className="muted">{gen.outputs.length > 1 ? `Imagem ${i + 1}` : gen.model_name}</span>
+                    {o.kind === 'video' ? <video src={o.url} controls playsInline /> : o.kind === 'audio' ? <audio src={o.url} controls style={{ width: '100%' }} /> : <img src={o.url} alt={gen.prompt || gen.model_name} />}
+                    <figcaption className="out-actions"><span className="muted">{gen.outputs.length > 1 ? `Resultado ${i + 1}` : gen.model_name}</span>
                       <a className="btn" href={o.downloadUrl} download>Baixar</a></figcaption>
                   </figure>
                 ))}

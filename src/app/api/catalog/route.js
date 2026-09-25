@@ -1,8 +1,11 @@
 import { apiSession } from '@/lib/auth';
-import { listImageModels } from '@/lib/catalog';
+import { listModels, isStudio, catalogMeta } from '@/lib/catalog';
 
-export async function GET() {
+// GET /api/catalog?studio=image|video
+export async function GET(req) {
   const s = await apiSession();
   if (s.error) return s.error;
-  return Response.json({ image: listImageModels() }, { headers: { 'Cache-Control': 'private, max-age=3600' } });
+  const studio = new URL(req.url).searchParams.get('studio') || 'image';
+  if (!isStudio(studio)) return Response.json({ error: 'Estúdio inválido.' }, { status: 400 });
+  return Response.json({ studio, models: listModels(studio), meta: catalogMeta }, { headers: { 'Cache-Control': 'private, max-age=3600' } });
 }
