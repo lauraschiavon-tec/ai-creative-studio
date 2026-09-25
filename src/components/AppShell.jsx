@@ -21,7 +21,7 @@ export default async function AppShell({ active, admin = false, children }) {
         <div className="userbox">
           {isSandbox() && <span className="badge sand" title="Modo de teste: nada é cobrado e os resultados são de exemplo">Sandbox</span>}
           <span>{profile.full_name || profile.email}</span>
-          <SignOut />
+          <SignOut supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL} supabaseKey={process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY} />
         </div>
       </header>
       <main className="page">{children}</main>
