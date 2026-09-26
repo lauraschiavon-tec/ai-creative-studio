@@ -238,3 +238,12 @@ table.t td.n, table.t th.n { text-align: right; font-family: var(--font-mono); }
   .nav a, .nav span { padding: 5px 9px; font-size: 13px; }
   .userbox { margin-left: auto; }
 }
+
+/* Caixa "Modo teste (Sandbox)" */
+.modebox { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1.5px solid currentColor; border-radius: 99px; font-size: 12px; font-weight: 600; letter-spacing: .03em; cursor: pointer; white-space: nowrap; }
+.modebox input { accent-color: var(--ink); width: 15px; height: 15px; margin: 0; cursor: inherit; }
+.modebox.test { color: var(--muted); }
+.modebox.live { color: #fff; background: var(--danger); border-color: var(--danger); }
+.modebox.live input { accent-color: #fff; }
+.modebox:has(input:disabled) { cursor: not-allowed; opacity: .85; }
+.modebox em { font-style: normal; color: var(--danger); font-weight: 500; }

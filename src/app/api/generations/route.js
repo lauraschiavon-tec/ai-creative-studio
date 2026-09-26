@@ -1,7 +1,8 @@
 import { apiSession } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
-import { submit, sandboxFor, MuapiError } from '@/lib/muapi';
+import { submit, MuapiError } from '@/lib/muapi';
+import { getMode } from '@/lib/mode';
 import { extractCost, syncGeneration, withSignedUrls } from '@/lib/generations';
 import { signedUrl } from '@/lib/storage';
 
@@ -25,7 +26,7 @@ export async function POST(req) {
 
   // Mídias de referência: só caminhos do próprio usuário no bucket "uploads", nos campos que o modelo declara.
   const admin = supabaseAdmin();
-  const sandbox = sandboxFor(s.user); // usuário "só Sandbox" nunca usa a chave real
+  const { sandbox } = await getMode(s.user); // Sandbox (sem custo) ou Produção, conforme a caixa "Modo teste" e as travas
   const inputFiles = [];
   const sent = body.media && typeof body.media === 'object' ? body.media : {};
   const fromGen = body.fromGenerations && typeof body.fromGenerations === 'object' ? body.fromGenerations : {};

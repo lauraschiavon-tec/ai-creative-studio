@@ -36,6 +36,10 @@ endpoints listados no OpenAPI que respondem 404 (ex.: `veo3.1-extend-video`, `gr
 (`seedance-2.0-watermark-remover`), mocks de Sandbox sem arquivo (`luma-modify-video`, `runway-aleph-v2v`) e treinadores de LoRA, que pedem uma URL de dataset.
 Confirme com a chave de Produção antes de contar com esses.
 
-## Usuário "só Sandbox" (para testes)
-`npm run create-user -- email user "Nome" --sandbox` cria um usuário que SEMPRE usa a chave Sandbox da MuAPI (nunca gasta crédito),
-mesmo com `MUAPI_ENV=production`. A flag fica em `app_metadata.sandbox_only` (só o administrador altera) e o topo do site mostra o selo SANDBOX.
+## Modo teste (Sandbox) x Produção
+No topo do site há a caixa **"Modo teste (Sandbox)"**. Marcada: usa a chave de teste da MuAPI (sem custo, resultados de exemplo).
+Desmarcada (pede confirmação): usa a chave real e **gasta crédito**. O selo fica vermelho ("PRODUÇÃO · gasta crédito").
+- `MUAPI_ENV=sandbox`: o app inteiro fica em Sandbox e a caixa é travada para todos.
+- `MUAPI_ENV=production`: cada usuário escolhe pela caixa. O padrão é Sandbox (seguro); `MUAPI_DEFAULT_MODE=production` inverte o padrão.
+- Usuário **"só Sandbox"** (`npm run create-user -- email user "Nome" --sandbox`): caixa sempre marcada e travada; nunca gasta crédito.
+  A flag fica em `app_metadata.sandbox_only` (só o administrador altera).

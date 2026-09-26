@@ -3,9 +3,7 @@ import 'server-only';
 const BASE = 'https://api.muapi.ai';
 
 export const isSandbox = () => (process.env.MUAPI_ENV || 'sandbox') !== 'production';
-// Sandbox para este usuário: app inteiro em Sandbox OU usuário marcado como "só Sandbox" (app_metadata.sandbox_only,
-// definido pelo administrador; o usuário não consegue alterar). Nesse caso usa sempre a chave de teste: nunca gasta crédito.
-export const sandboxFor = (user) => isSandbox() || user?.app_metadata?.sandbox_only === true;
+// O modo de cada usuário (Sandbox/Produção) é resolvido em lib/mode.js; aqui só há a chave usada por requisição.
 
 function apiKey(sandbox) {
   const key = sandbox ? process.env.MUAPI_API_KEY_SANDBOX : process.env.MUAPI_API_KEY;

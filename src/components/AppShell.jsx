@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { requireSession } from '@/lib/auth';
-import { sandboxFor } from '@/lib/muapi';
+import { getMode } from '@/lib/mode';
+import ModeToggle from './ModeToggle';
 import SignOut from './SignOut';
 
 export default async function AppShell({ active, admin = false, children }) {
   const { user, profile } = await requireSession({ admin });
+  const mode = await getMode(user);
   const link = (href, key, label) => <Link href={href} className={active === key ? 'on' : ''}>{label}</Link>;
   return (
     <>
@@ -19,7 +21,7 @@ export default async function AppShell({ active, admin = false, children }) {
           {profile.role === 'admin' && link('/admin', 'admin', 'Custos')}
         </nav>
         <div className="userbox">
-          {sandboxFor(user) && <span className="badge sand" title="Modo de teste: nada é cobrado e os resultados são de exemplo">Sandbox</span>}
+          <ModeToggle sandbox={mode.sandbox} canChoose={mode.canChoose} reason={mode.reason} />
           <span>{profile.full_name || profile.email}</span>
           <SignOut supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL} supabaseKey={process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY} />
         </div>

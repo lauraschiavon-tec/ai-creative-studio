@@ -1,6 +1,7 @@
 import { apiSession } from '@/lib/auth';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
-import { estimateCost, sandboxFor } from '@/lib/muapi';
+import { estimateCost } from '@/lib/muapi';
+import { getMode } from '@/lib/mode';
 
 // Estimativa de custo antes de gerar (só parâmetros; sem mídia). Best-effort: nem todo modelo suporta.
 export async function POST(req) {
@@ -12,7 +13,7 @@ export async function POST(req) {
     if (!model) return Response.json({ available: false });
     const payload = buildParams(model, body.params);
     if (model.hasPrompt) payload.prompt = String(body.prompt || '').slice(0, 5000) || 'estimate';
-    const r = await estimateCost(model.endpoint, payload, { sandbox: sandboxFor(s.user) });
+    const r = await estimateCost(model.endpoint, payload, { sandbox: (await getMode(s.user)).sandbox });
     const usd = typeof r.cost === 'number' ? r.cost : r.amount_usd ?? r.cost?.amount_usd;
     return Response.json(typeof usd === 'number' ? { available: true, usd } : { available: false });
   } catch {
