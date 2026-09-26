@@ -13,8 +13,13 @@ export async function GET(req) {
     const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
     q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
   }
-  const [{ data: rows, error }, { data: profiles }] = await Promise.all([q, sb.from('atelie_profiles').select('id,email,full_name,role,active')]);
+  const [{ data: rows, error }, { data: legacy }, { data: dash }] = await Promise.all([
+    q,
+    sb.from('atelie_profiles').select('id,email,full_name,role,active'),
+    sb.from('dashboard_users').select('id,username,email'), // usuários atuais (Dashboard)
+  ]);
   if (error) return Response.json({ error: 'Falha ao carregar custos.' }, { status: 500 });
+  const profiles = [...(legacy || []), ...(dash || []).map((d) => ({ id: d.id, email: d.email || d.username, full_name: d.username }))];
 
   const acc = () => ({ generations: 0, completed: 0, failed: 0, usd: 0, credits: 0 });
   const add = (a, r) => {

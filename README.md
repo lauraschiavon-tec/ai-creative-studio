@@ -19,6 +19,14 @@ Cada endpoint vira um modelo com seu schema (parâmetros, enums, limites) e camp
 todo pedido contra esse schema antes de chamar a MuAPI. Rode `npm run catalog` de tempos em tempos para trazer modelos novos.
 Modelos em destaque ("Recomendados") ficam em `src/config/studios.js`; todo o resto continua em "Todos os modelos".
 
+## Login (unificado com a Dashboard)
+Os usuários, senhas e permissões são os da Dashboard (`dashboard_users`); o AI Studio só lê. Acesso = usuário ativo e (admin, ou `permissions` nula, ou permissão **AI Studio** = `/aistudio`).
+- **SSO**: na Dashboard, o item "AI Studio" gera um ticket de 60s (uso único) e abre `/sso?ticket=…` aqui, já autenticado.
+- **Login direto**: usuário + senha da Dashboard (`/api/auth/login`).
+- A sessão (cookie `aic_session`, 12h) é revalidada contra `dashboard_users` a cada uso (cache de 15s): desativar ou tirar a permissão corta o acesso.
+- O histórico e o custo continuam por usuário (`atelie_generations.user_id` = `dashboard_users.id`).
+- Variáveis: `AISTUDIO_SSO_SECRET` (igual à do backend da Dashboard), `AISTUDIO_SESSION_SECRET` (opcional), `LEGACY_LOGIN` (`off` remove o login antigo por e-mail). Migration: `supabase/migrations/002_login_pela_dashboard.sql`.
+
 ## Deploy
 Docker: `docker compose up -d --build` (com `.env.production`). Node/PM2: ver `ecosystem.config.cjs`. Coloque Nginx/Caddy com HTTPS na frente.
 

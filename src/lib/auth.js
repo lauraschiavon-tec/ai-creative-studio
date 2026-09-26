@@ -1,10 +1,26 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { supabaseServer } from './supabase/server';
 import { supabaseAdmin } from './supabase/admin';
+import { SESSION_COOKIE, verifySession } from './session-token';
+import { getDashboardUser, canUseAiStudio, toSession } from './dashboard-users';
 
-// Retorna { user, profile } ou null. Sempre valida o token no servidor (getUser).
+// Login antigo (Supabase Auth + atelie_profiles). Fica como fallback durante a migração;
+// desligue com LEGACY_LOGIN=off quando o login pela Dashboard estiver validado em produção.
+export const legacyEnabled = () => (process.env.LEGACY_LOGIN || '').trim().toLowerCase() !== 'off';
+
+// Retorna { user, profile } ou null. Sempre revalida no servidor.
 export async function getSession() {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (token) {
+    const claims = await verifySession(token);
+    if (claims) {
+      const u = await getDashboardUser(claims.sub); // relê a Dashboard: desativado ou sem permissão = fora
+      return u && canUseAiStudio(u) ? toSession(u) : null;
+    }
+  }
+  if (!legacyEnabled()) return null;
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return null;
