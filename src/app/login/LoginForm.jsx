@@ -21,7 +21,7 @@ export default function LoginForm({ supabaseUrl, supabaseKey }) {
   return (
     <div className="login">
       <section className="login-art">
-        <span className="brand">Ateliê <small style={{ color: '#c9bfae' }}>estúdio interno</small></span>
+        <span className="brand">ai-creative <small style={{ color: '#c9bfae' }}>estúdio interno</small></span>
         <div>
           <h1>Da ideia à <em>imagem</em>, sem sair da mesa.</h1>
           <p style={{ marginTop: 22 }}>Ferramenta interna da equipe para criar imagens e vídeos com os melhores modelos, com histórico e custo de cada geração.</p>

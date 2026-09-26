@@ -1,4 +1,4 @@
-# Ateliê — estúdio criativo interno
+# ai-creative — estúdio criativo interno
 
 Interface própria (Next.js) sobre a MuAPI. Todas as chamadas à MuAPI e ao Supabase com privilégios passam pelo servidor;
 o navegador só recebe a chave **publicável** do Supabase.

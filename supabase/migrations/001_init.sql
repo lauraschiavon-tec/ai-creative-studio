@@ -1,9 +1,9 @@
--- Ateliê — esquema inicial.
+-- ai-creative — esquema inicial.
 -- Rode uma vez: Supabase > SQL Editor > New query > cole tudo > Run.
 --
 -- Este projeto Supabase é compartilhado com outro sistema, então TUDO aqui usa o
 -- prefixo "atelie_" e NÃO há gatilho em auth.users (não interfere nos outros usuários).
--- Só quem tem linha em atelie_profiles consegue entrar no Ateliê.
+-- Só quem tem linha em atelie_profiles consegue entrar no ai-creative.
 
 create table if not exists public.atelie_profiles (
   id uuid primary key references auth.users(id) on delete cascade,

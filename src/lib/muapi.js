@@ -2,7 +2,9 @@ import 'server-only';
 
 const BASE = 'https://api.muapi.ai';
 
-export const isSandbox = () => (process.env.MUAPI_ENV || 'sandbox') !== 'production';
+// Tolerante a maiúsculas, espaços e aspas (ex.: MUAPI_ENV="Production" ou ' production ').
+export const envMode = () => String(process.env.MUAPI_ENV || 'sandbox').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase();
+export const isSandbox = () => envMode() !== 'production';
 // O modo de cada usuário (Sandbox/Produção) é resolvido em lib/mode.js; aqui só há a chave usada por requisição.
 
 function apiKey(sandbox) {

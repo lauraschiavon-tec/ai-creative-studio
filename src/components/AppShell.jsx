@@ -11,7 +11,7 @@ export default async function AppShell({ active, admin = false, children }) {
   return (
     <>
       <header className="topbar">
-        <Link href="/" className="brand">Ateliê <small>estúdio interno</small></Link>
+        <Link href="/" className="brand">ai-creative <small>estúdio interno</small></Link>
         <nav className="nav">
           {link('/', 'image', 'Imagem')}
           {link('/video', 'video', 'Vídeo')}
@@ -21,7 +21,7 @@ export default async function AppShell({ active, admin = false, children }) {
           {profile.role === 'admin' && link('/admin', 'admin', 'Custos')}
         </nav>
         <div className="userbox">
-          <ModeToggle sandbox={mode.sandbox} canChoose={mode.canChoose} reason={mode.reason} />
+          <ModeToggle sandbox={mode.sandbox} canChoose={mode.canChoose} reason={mode.reason} env={mode.env} />
           <span>{profile.full_name || profile.email}</span>
           <SignOut supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL} supabaseKey={process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY} />
         </div>

@@ -10,7 +10,7 @@ export async function POST(req) {
 
   const current = await getMode(s.user);
   if (!current.canChoose) {
-    return Response.json({ error: current.reason === 'user' ? 'Sua conta é somente de teste (Sandbox).' : 'O app está em modo teste para todos.', ...current }, { status: 403 });
+    return Response.json({ error: current.reason === 'user' ? 'Sua conta é somente de teste (Sandbox).' : `O app está em modo teste para todos (MUAPI_ENV lido: "${current.env}").`, ...current }, { status: 403 });
   }
   const res = Response.json({ sandbox: body.sandbox, canChoose: true });
   res.headers.append('Set-Cookie', `${MODE_COOKIE}=${body.sandbox ? 'sandbox' : 'production'}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly${req.nextUrl.protocol === 'https:' ? '; Secure' : ''}`);

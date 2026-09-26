@@ -2,10 +2,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const LOCK = { app: 'O app inteiro está em modo teste.', user: 'Sua conta é somente de teste.' };
+const lockText = (reason, env) => (reason === 'app'
+  ? `O app inteiro está em modo teste (variável MUAPI_ENV lida pelo servidor: "${env}"). O administrador muda isso no EasyPanel: MUAPI_ENV=production.`
+  : 'Sua conta é somente de teste.');
 
 // Caixa "Modo teste (Sandbox)". Marcada = sem custo, resultados de exemplo. Desmarcada = gasta crédito real.
-export default function ModeToggle({ sandbox, canChoose, reason }) {
+export default function ModeToggle({ sandbox, canChoose, reason, env }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -22,7 +24,7 @@ export default function ModeToggle({ sandbox, canChoose, reason }) {
   }
 
   return (
-    <label className={`modebox ${sandbox ? 'test' : 'live'}`} title={canChoose ? 'Marcado: sem custo, resultados de exemplo. Desmarcado: gasta crédito real.' : LOCK[reason]}>
+    <label className={`modebox ${sandbox ? 'test' : 'live'}`} title={canChoose ? 'Marcado: sem custo, resultados de exemplo. Desmarcado: gasta crédito real.' : lockText(reason, env)}>
       <input type="checkbox" checked={sandbox} disabled={!canChoose || busy} onChange={(e) => change(e.target.checked)} />
       <span>{sandbox ? 'Modo teste (Sandbox)' : 'PRODUÇÃO · gasta crédito'}</span>
       {!canChoose && <small>🔒</small>}

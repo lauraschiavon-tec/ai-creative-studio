@@ -6,7 +6,7 @@ const body = Instrument_Sans({ subsets: ['latin'], variable: '--f-body' });
 const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '600'], variable: '--f-mono' });
 
 export const metadata = {
-  title: 'Ateliê — estúdio criativo interno',
+  title: 'ai-creative — estúdio criativo interno',
   description: 'Geração de imagens e vídeos para a equipe.',
   robots: { index: false, follow: false },
 };

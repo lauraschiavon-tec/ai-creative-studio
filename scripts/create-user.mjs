@@ -1,10 +1,10 @@
-// Cria um usuário do Ateliê (cadastro fechado).
+// Cria um usuário do ai-creative (cadastro fechado).
 // Uso: npm run create-user -- email [admin|user] ["Nome"] [--sandbox]
 // --sandbox: usuário de teste que SEMPRE usa a chave Sandbox (nunca gasta crédito, mesmo com o app em Produção).
 // A senha é pedida no terminal (sem eco) — não vai para argumentos, histórico do shell nem Git.
 // Alternativa não interativa: defina ATELIE_PASSWORD no ambiente.
 // Se o e-mail já existe no Supabase Auth (ex.: usuário de outro sistema do mesmo projeto),
-// apenas concede acesso ao Ateliê, sem alterar a senha dele.
+// apenas concede acesso ao ai-creative, sem alterar a senha dele.
 import { createClient } from '@supabase/supabase-js';
 import readline from 'node:readline';
 
@@ -41,7 +41,7 @@ if (created.error) {
   const { data } = await sb.auth.admin.listUsers({ perPage: 1000 });
   userId = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())?.id;
   if (!userId) { console.error('Usuário existe mas não foi encontrado.'); process.exit(1); }
-  console.log('E-mail já existia no Auth: senha mantida, acesso ao Ateliê concedido.');
+  console.log('E-mail já existia no Auth: senha mantida, acesso ao ai-creative concedido.');
 } else {
   userId = created.data.user.id;
 }
