@@ -1,7 +1,7 @@
 import { apiSession } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
-import { submit, isSandbox, MuapiError } from '@/lib/muapi';
+import { submit, sandboxFor, MuapiError } from '@/lib/muapi';
 import { extractCost, syncGeneration, withSignedUrls } from '@/lib/generations';
 import { signedUrl } from '@/lib/storage';
 
@@ -25,6 +25,7 @@ export async function POST(req) {
 
   // Mídias de referência: só caminhos do próprio usuário no bucket "uploads", nos campos que o modelo declara.
   const admin = supabaseAdmin();
+  const sandbox = sandboxFor(s.user); // usuário "só Sandbox" nunca usa a chave real
   const inputFiles = [];
   const sent = body.media && typeof body.media === 'object' ? body.media : {};
   const fromGen = body.fromGenerations && typeof body.fromGenerations === 'object' ? body.fromGenerations : {};
@@ -63,12 +64,12 @@ export async function POST(req) {
   const { data: row, error: insErr } = await admin.from('atelie_generations').insert({
     user_id: s.user.id, studio, mode: model.mode, model_id: model.id, model_name: model.name,
     endpoint: model.endpoint, prompt, params: body.params || {}, input_files: inputFiles,
-    sandbox: isSandbox(), status: 'pending',
+    sandbox, status: 'pending',
   }).select().single();
   if (insErr) return bad('Não foi possível registrar a geração.', 500);
 
   try {
-    const res = await submit(model.endpoint, payload);
+    const res = await submit(model.endpoint, payload, { sandbox });
     const requestId = res.request_id || res.id;
     if (!requestId) throw new MuapiError('A MuAPI não retornou um identificador de geração.', 502, JSON.stringify(res).slice(0, 200));
     const cost = extractCost(res.cost);

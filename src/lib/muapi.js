@@ -3,9 +3,12 @@ import 'server-only';
 const BASE = 'https://api.muapi.ai';
 
 export const isSandbox = () => (process.env.MUAPI_ENV || 'sandbox') !== 'production';
+// Sandbox para este usuário: app inteiro em Sandbox OU usuário marcado como "só Sandbox" (app_metadata.sandbox_only,
+// definido pelo administrador; o usuário não consegue alterar). Nesse caso usa sempre a chave de teste: nunca gasta crédito.
+export const sandboxFor = (user) => isSandbox() || user?.app_metadata?.sandbox_only === true;
 
-function apiKey() {
-  const key = isSandbox() ? process.env.MUAPI_API_KEY_SANDBOX : process.env.MUAPI_API_KEY;
+function apiKey(sandbox) {
+  const key = sandbox ? process.env.MUAPI_API_KEY_SANDBOX : process.env.MUAPI_API_KEY;
   if (!key) throw new MuapiError('Chave da MuAPI não configurada no servidor.', 500);
   return key;
 }
@@ -27,12 +30,12 @@ function friendly(status, text) {
   return ['A MuAPI está indisponível ou instável. Tente novamente em instantes.', 502, detail];
 }
 
-async function call(path, { method = 'GET', body, timeout = 30000 } = {}) {
+async function call(path, { method = 'GET', body, timeout = 30000, sandbox = isSandbox() } = {}) {
   let res;
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
-      headers: { 'x-api-key': apiKey(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { 'x-api-key': apiKey(sandbox), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeout),
       cache: 'no-store',
@@ -46,7 +49,7 @@ async function call(path, { method = 'GET', body, timeout = 30000 } = {}) {
   try { return JSON.parse(text); } catch { throw new MuapiError('Resposta inválida da MuAPI.', 502, text.slice(0, 200)); }
 }
 
-export const submit = (endpoint, payload) => call(`/api/v1/${endpoint}`, { method: 'POST', body: payload });
-export const getResult = (requestId) => call(`/api/v1/predictions/${encodeURIComponent(requestId)}/result`);
-export const estimateCost = (endpoint, payload) => call(`/api/v1/models/${endpoint}/estimate-cost`, { method: 'POST', body: payload, timeout: 8000 });
+export const submit = (endpoint, payload, o = {}) => call(`/api/v1/${endpoint}`, { method: 'POST', body: payload, ...o });
+export const getResult = (requestId, o = {}) => call(`/api/v1/predictions/${encodeURIComponent(requestId)}/result`, o);
+export const estimateCost = (endpoint, payload, o = {}) => call(`/api/v1/models/${endpoint}/estimate-cost`, { method: 'POST', body: payload, timeout: 8000, ...o });
 export const getBalance = () => call('/api/v1/account/balance');

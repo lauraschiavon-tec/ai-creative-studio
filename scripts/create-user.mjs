@@ -1,5 +1,6 @@
 // Cria um usuário do Ateliê (cadastro fechado).
-// Uso: npm run create-user -- email [admin|user] ["Nome"]
+// Uso: npm run create-user -- email [admin|user] ["Nome"] [--sandbox]
+// --sandbox: usuário de teste que SEMPRE usa a chave Sandbox (nunca gasta crédito, mesmo com o app em Produção).
 // A senha é pedida no terminal (sem eco) — não vai para argumentos, histórico do shell nem Git.
 // Alternativa não interativa: defina ATELIE_PASSWORD no ambiente.
 // Se o e-mail já existe no Supabase Auth (ex.: usuário de outro sistema do mesmo projeto),
@@ -7,7 +8,9 @@
 import { createClient } from '@supabase/supabase-js';
 import readline from 'node:readline';
 
-const [email, role = 'user', name] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const sandboxOnly = args.includes('--sandbox');
+const [email, role = 'user', name] = args.filter((a) => a !== '--sandbox');
 if (!email || !['admin', 'user'].includes(role)) {
   console.error('Uso: npm run create-user -- email [admin|user] ["Nome"]');
   process.exit(1);
@@ -43,6 +46,11 @@ if (created.error) {
   userId = created.data.user.id;
 }
 
+if (sandboxOnly) {
+  const { error: e2 } = await sb.auth.admin.updateUserById(userId, { app_metadata: { sandbox_only: true } });
+  if (e2) { console.error('Erro ao marcar como só-Sandbox:', e2.message); process.exit(1); }
+}
+
 const { error } = await sb.from('atelie_profiles').upsert({ id: userId, email, full_name: name || email.split('@')[0], role, active: true });
 if (error) { console.error('Erro ao criar perfil (o SQL 001_init.sql já foi executado?):', error.message); process.exit(1); }
-console.log(`Pronto: ${email} (${role})`);
+console.log(`Pronto: ${email} (${role})${sandboxOnly ? ' — SÓ SANDBOX (nunca gasta crédito)' : ''}`);

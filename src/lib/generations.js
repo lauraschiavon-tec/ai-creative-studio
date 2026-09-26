@@ -58,7 +58,7 @@ export async function syncGeneration(row) {
   const ageMin = (Date.now() - new Date(row.created_at).getTime()) / 60000;
   let result;
   try {
-    result = await getResult(row.provider_request_id);
+    result = await getResult(row.provider_request_id, { sandbox: !!row.sandbox }); // a consulta usa a mesma chave do envio
   } catch (e) {
     if (e instanceof MuapiError && ageMin > MAX_MINUTES) return finish(row, { status: 'failed', error: `Tempo esgotado. ${e.message}` });
     return row; // falha transitória de consulta: tenta de novo no próximo poll

@@ -35,3 +35,7 @@ Todos os 562 endpoints de imagem e vídeo do OpenAPI foram exercitados em Sandbo
 endpoints listados no OpenAPI que respondem 404 (ex.: `veo3.1-extend-video`, `grok-imagine-extend`, `*-vip-extend`), um que recusa a chave
 (`seedance-2.0-watermark-remover`), mocks de Sandbox sem arquivo (`luma-modify-video`, `runway-aleph-v2v`) e treinadores de LoRA, que pedem uma URL de dataset.
 Confirme com a chave de Produção antes de contar com esses.
+
+## Usuário "só Sandbox" (para testes)
+`npm run create-user -- email user "Nome" --sandbox` cria um usuário que SEMPRE usa a chave Sandbox da MuAPI (nunca gasta crédito),
+mesmo com `MUAPI_ENV=production`. A flag fica em `app_metadata.sandbox_only` (só o administrador altera) e o topo do site mostra o selo SANDBOX.
