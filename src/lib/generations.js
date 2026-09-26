@@ -1,10 +1,20 @@
 import 'server-only';
 import { supabaseAdmin } from './supabase/admin';
 import { getResult, MuapiError } from './muapi';
+import { putObject, signedUrl } from './storage';
 
 const TERMINAL = new Set(['completed', 'failed']);
 const MAX_MINUTES = 45;
 const SIGNED_TTL = 60 * 60;
+
+// Reparo: se uma saída ficou só com a URL remota (Storage indisponível na hora), tenta copiar de novo (até 20h após criar).
+export async function repairOutputs(row) {
+  if (row.status !== 'completed' || !row.outputs?.some((o) => !o.path && o.remote)) return row;
+  if (Date.now() - new Date(row.created_at).getTime() > 20 * 3600 * 1000) return row;
+  const outputs = await Promise.all(row.outputs.map((o, i) => (o.path || !o.remote ? o : persistOutput(row, o.remote, i))));
+  if (!outputs.some((o, i) => o.path && !row.outputs[i].path)) return row;
+  return (await update(row.id, { outputs })) || row;
+}
 
 export const extractCost = (c) => (c && typeof c === 'object' ? {
   cost_usd: c.amount_usd ?? null,
@@ -30,7 +40,7 @@ async function persistOutput(row, url, index) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     const path = `${row.user_id}/${row.id}-${index}.${extFrom(url, res.headers.get('content-type') || '')}`;
-    const { error } = await supabaseAdmin().storage.from('atelie-outputs').upload(path, buf, {
+    const { error } = await putObject('atelie-outputs', path, buf, {
       contentType: res.headers.get('content-type') || undefined, upsert: true,
     });
     if (error) throw error;
@@ -94,8 +104,8 @@ export async function withSignedUrls(rows) {
     const outputs = await Promise.all((r.outputs || []).map(async (o, i) => {
       if (!o.path) return { url: o.remote, downloadUrl: o.remote, kind: kindOf(o.remote, r.studio) };
       const [view, dl] = await Promise.all([
-        st.from('atelie-outputs').createSignedUrl(o.path, SIGNED_TTL),
-        st.from('atelie-outputs').createSignedUrl(o.path, SIGNED_TTL, { download: `${r.model_id}-${r.id.slice(0, 8)}-${i + 1}.${o.path.split('.').pop()}` }),
+        signedUrl('atelie-outputs', o.path, SIGNED_TTL),
+        signedUrl('atelie-outputs', o.path, SIGNED_TTL, { download: `${r.model_id}-${r.id.slice(0, 8)}-${i + 1}.${o.path.split('.').pop()}` }),
       ]);
       return { url: view.data?.signedUrl || o.remote, downloadUrl: dl.data?.signedUrl || o.remote, kind: kindOf(o.path, r.studio) };
     }));
@@ -103,7 +113,7 @@ export async function withSignedUrls(rows) {
     const inputs = (await Promise.all((r.input_files || []).map(async (f) => {
       const item = typeof f === 'string' ? { field: 'image', kind: 'image', path: f } : f;
       const url = item.bucket === 'remote' ? item.path
-        : (await st.from(item.bucket === 'outputs' ? 'atelie-outputs' : 'atelie-uploads').createSignedUrl(item.path, SIGNED_TTL)).data?.signedUrl;
+        : (await signedUrl(item.bucket === 'outputs' ? 'atelie-outputs' : 'atelie-uploads', item.path, SIGNED_TTL)).data?.signedUrl;
       return url ? { field: item.field, kind: item.kind, url } : null;
     }))).filter(Boolean);
     return { ...r, outputs, input_urls: inputs };

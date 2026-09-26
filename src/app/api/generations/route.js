@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
 import { submit, isSandbox, MuapiError } from '@/lib/muapi';
 import { extractCost, syncGeneration, withSignedUrls } from '@/lib/generations';
+import { signedUrl } from '@/lib/storage';
 
 const bad = (error, status = 400) => Response.json({ error }, { status });
 
@@ -35,7 +36,7 @@ export async function POST(req) {
       if (!src || src.user_id !== s.user.id || src.status !== 'completed' || !out) return bad('A geração anterior não está disponível.');
       let url = out.remote;
       if (out.path) {
-        const { data } = await admin.storage.from('atelie-outputs').createSignedUrl(out.path, 6 * 3600);
+        const { data } = await signedUrl('atelie-outputs', out.path, 6 * 3600);
         url = data?.signedUrl || out.remote;
       }
       payload[def.name] = def.array ? [url] : url;
@@ -49,8 +50,7 @@ export async function POST(req) {
     if (!paths.every((p) => typeof p === 'string' && p.startsWith(`${s.user.id}/`) && !p.includes('..'))) return bad('Arquivo inválido.');
     const urls = [];
     for (const p of paths) {
-      let { data } = await admin.storage.from('atelie-uploads').createSignedUrl(p, 6 * 3600);
-      if (!data?.signedUrl) ({ data } = await admin.storage.from('atelie-uploads').createSignedUrl(p, 6 * 3600)); // 1 nova tentativa (falha transitória)
+      const { data } = await signedUrl('atelie-uploads', p, 6 * 3600);
       if (!data?.signedUrl) return bad('Não foi possível ler o arquivo enviado.');
       urls.push(data.signedUrl);
       inputFiles.push({ field: def.name, kind: def.kind, path: p });
