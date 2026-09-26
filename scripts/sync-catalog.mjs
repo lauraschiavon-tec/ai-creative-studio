@@ -24,8 +24,10 @@ const unwrap = (raw) => {
 
 // ── Classificação: tag do OpenAPI → estúdio + modo ─────────────────────────────
 function classify(tag, slug) {
+  if (tag === 'Audio') return /tts|speech/.test(slug) && !/clone/.test(slug) ? ['audio', 'tts'] : null; // só voz (usada no Lip Sync com texto)
   const VIDEO_TAGS = ['Video: Text-to-Video', 'Video: Image-to-Video', 'Video: Edit & Effects'];
-  if (VIDEO_TAGS.includes(tag)) { // o nome do endpoint é mais confiável que a tag para os sub-modos
+  if (VIDEO_TAGS.includes(tag)) {
+    if (/infinitetalk|speech-to-video|lip-?sync|omnihuman|avatar|talking/.test(slug)) return ['video', 'lipsync']; // o nome do endpoint é mais confiável que a tag para os sub-modos
     if (/first-last|last-frame|first-frame|start-end|-flf/.test(slug)) return ['video', 'flf'];
     if (/motion-control|motion-transfer/.test(slug)) return ['video', 'motion'];
     if (/extend/.test(slug)) return ['video', 'extend'];
@@ -87,7 +89,7 @@ function prettyName(slug) {
 const cleanTitle = (k, s) => (s.title && s.title.toLowerCase() !== k.replace(/_/g, ' ') ? s.title : k.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()));
 
 // ── Construção do catálogo ──────────────────────────────────────────────────────
-const out = { image: [], video: [] };
+const out = { image: [], video: [], audio: [] };
 const problems = [];
 for (const [path, item] of Object.entries(spec.paths)) {
   const op = item.post;
@@ -130,12 +132,13 @@ for (const [path, item] of Object.entries(spec.paths)) {
     needsMedia: MEDIA_MODES.has(mode) && media.length > 0 && !media.some((m) => m.required), media, inputs,
   });
 }
-for (const s of ['image', 'video']) out[s].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+for (const s of ['image', 'video', 'audio']) out[s].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
 writeFileSync('data/catalog.json', JSON.stringify({ source: SPEC_URL, apiVersion: spec.info?.version, generatedAt: new Date().toISOString(), ...out }));
 const count = (l) => l.reduce((a, m) => ((a[m.mode] = (a[m.mode] || 0) + 1), a), {});
 console.log(`Fonte: ${offline ? 'cache local' : SPEC_URL}`);
 console.log('image', out.image.length, count(out.image));
 console.log('video', out.video.length, count(out.video));
+console.log('audio', out.audio.length, out.audio.map((m) => m.id + (m.limited ? '(limitado)' : '')).join(', '));
 console.log('limitados (campo obrigatório não renderizável):', [...out.image, ...out.video].filter((m) => m.limited).length);
 if (problems.length) console.log('avisos:', problems.slice(0, 10));

@@ -3,8 +3,6 @@ import { requireSession } from '@/lib/auth';
 import { isSandbox } from '@/lib/muapi';
 import SignOut from './SignOut';
 
-const SOON = ['Lip Sync', 'Cinema'];
-
 export default async function AppShell({ active, admin = false, children }) {
   const { profile } = await requireSession({ admin });
   const link = (href, key, label) => <Link href={href} className={active === key ? 'on' : ''}>{label}</Link>;
@@ -15,7 +13,8 @@ export default async function AppShell({ active, admin = false, children }) {
         <nav className="nav">
           {link('/', 'image', 'Imagem')}
           {link('/video', 'video', 'Vídeo')}
-          {SOON.map((n) => <span key={n} title="Próxima etapa">{n}<em>em breve</em></span>)}
+          {link('/lipsync', 'lipsync', 'Lip Sync')}
+          {link('/cinema', 'cinema', 'Cinema')}
           {link('/history', 'history', 'Histórico')}
           {profile.role === 'admin' && link('/admin', 'admin', 'Custos')}
         </nav>

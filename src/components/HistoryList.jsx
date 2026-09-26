@@ -1,9 +1,11 @@
 'use client';
 import { Fragment, useEffect, useState, useCallback } from 'react';
 import { usd, credits, dateTime, STATUS, isDone } from './format';
-import { MODE_LABEL } from '@/config/studios';
+import { MODE_LABEL, STUDIO_LABEL } from '@/config/studios';
 
-const STUDIO_FILTER = [['', 'Tudo'], ['image', 'Imagem'], ['video', 'Vídeo']];
+const modeText = (g) => (g.params?._cinema ? 'Cinema · ' : '') + (MODE_LABEL[g.mode] || g.studio);
+
+const STUDIO_FILTER = [['', 'Tudo'], ['image', 'Imagem'], ['video', 'Vídeo'], ['audio', 'Voz']];
 
 function Media({ o, controls = true }) {
   if (o.kind === 'video') return <video src={o.url} controls={controls} muted={!controls} playsInline preload="metadata" />;
@@ -56,7 +58,7 @@ export default function HistoryList() {
                   <div className="pic">{g.status === 'completed' && first && first.kind !== 'audio' ? <Media o={first} controls={false} /> : <span className={`badge ${tone}`}>{g.status === 'completed' ? 'Áudio' : label}</span>}</div>
                   <div className="body">
                     <div className="t">{g.model_name}</div>
-                    <div className="row"><span>{MODE_LABEL[g.mode] || g.studio}</span><span className="mono">{usd(g.cost_usd)}</span></div>
+                    <div className="row"><span>{modeText(g)}</span><span className="mono">{usd(g.cost_usd)}</span></div>
                     <div className="row"><span>{dateTime(g.created_at)}</span></div>
                   </div>
                 </button>
@@ -77,7 +79,8 @@ function Detail({ g, onClose }) {
     const k = (e) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   }, [onClose]);
-  const params = Object.entries(g.params || {});
+  const params = Object.entries(g.params || {}).filter(([k]) => k !== '_basePrompt');
+  const show = (v) => (v && typeof v === 'object' ? Object.entries(v).map(([a, b]) => `${a}: ${b}`).join(' · ') : String(v));
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="panel modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -111,14 +114,14 @@ function Detail({ g, onClose }) {
             <dl className="kv">
               <dt>Status</dt><dd><span className={`badge ${tone}`}>{label}</span> {g.sandbox && <span className="badge sand">Sandbox</span>}</dd>
               <dt>Data e hora</dt><dd>{dateTime(g.created_at)}</dd>
-              <dt>Tipo</dt><dd>{g.studio === 'video' ? 'Vídeo' : 'Imagem'} · {MODE_LABEL[g.mode] || g.mode}</dd>
+              <dt>Tipo</dt><dd>{STUDIO_LABEL[g.studio] || g.studio} · {modeText(g)}</dd>
               <dt>Endpoint</dt><dd className="mono">{g.endpoint}</dd>
               <dt>Custo</dt><dd className="mono">{usd(g.cost_usd)} · {credits(g.cost_credits)}{g.cost_estimated ? ' (estimado)' : ''}{g.refunded ? ' · estornado' : ''}</dd>
               <dt>ID</dt><dd className="mono">{g.provider_request_id || '—'}</dd>
             </dl>
-            {g.prompt && <div><div className="step" style={{ margin: '0 0 6px' }}>Prompt</div><p style={{ margin: 0 }}>{g.prompt}</p></div>}
+            {(g.params?._basePrompt || g.prompt) && <div><div className="step" style={{ margin: '0 0 6px' }}>Prompt</div><p style={{ margin: 0 }}>{g.params?._basePrompt || g.prompt}</p>{g.params?._basePrompt && <details className="adv" style={{ marginTop: 8 }}><summary>Prompt final enviado</summary><p className="mono" style={{ margin: 0 }}>{g.prompt}</p></details>}</div>}
             {!!params.length && <div><div className="step" style={{ margin: '0 0 6px' }}>Parâmetros usados</div>
-              <dl className="kv">{params.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd className="mono">{String(v)}</dd></Fragment>)}</dl></div>}
+              <dl className="kv">{params.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd className="mono">{show(v)}</dd></Fragment>)}</dl></div>}
           </div>
         </div>
       </div>

@@ -28,7 +28,8 @@ export const STUDIOS = {
     ],
   },
 };
-export const MODE_LABEL = Object.fromEntries(Object.values(STUDIOS).flatMap((s) => s.modes));
+export const MODE_LABEL = { ...Object.fromEntries(Object.values(STUDIOS).flatMap((s) => s.modes)), tts: 'Texto → Voz' };
+export const STUDIO_LABEL = { image: 'Imagem', video: 'Vídeo', audio: 'Voz' };
 
 // Modelos que a empresa mais usa: aparecem primeiro como "Recomendados". NÃO limitam nada: todo o catálogo
 // da MuAPI continua em "Todos os modelos". Cada item liga o modelo aos endpoints de cada modo (conferidos no OpenAPI).

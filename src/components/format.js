@@ -13,6 +13,7 @@ export const STATUS = {
 export const isDone = (s) => s === 'completed' || s === 'failed';
 
 const LABELS = {
+  voice_id: 'ID da voz', language_code: 'Idioma', emotion: 'Emoção', speed: 'Velocidade', pitch: 'Tom', volume: 'Volume', stability: 'Estabilidade', similarity_boost: 'Similaridade', language_boost: 'Idioma (reforço)',
   aspect_ratio: 'Proporção', duration: 'Duração (s)', generate_audio: 'Gerar áudio', camera_fixed: 'Câmera fixa', mode: 'Modo', high_bitrate: 'Alta taxa de bits', draft: 'Rascunho (mais barato)', resolution: 'Resolução', quality: 'Qualidade', num_images: 'Nº de imagens', width: 'Largura',
   height: 'Altura', seed: 'Seed', negative_prompt: 'Prompt negativo', output_format: 'Formato de saída', guidance_scale: 'Guidance',
   num_inference_steps: 'Passos', strength: 'Intensidade', style: 'Estilo', safety_tolerance: 'Tolerância de segurança',

@@ -1,7 +1,7 @@
 import 'server-only';
 import catalog from '../../data/catalog.json';
 
-const STUDIOS = ['image', 'video'];
+const STUDIOS = ['image', 'video', 'audio']; // audio = só voz (TTS), usada pelo Lip Sync
 const index = new Map();
 for (const s of STUDIOS) for (const m of catalog[s]) index.set(`${s}:${m.id}`, m);
 

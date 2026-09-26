@@ -22,6 +22,14 @@ Modelos em destaque ("Recomendados") ficam em `src/config/studios.js`; todo o re
 ## Deploy
 Docker: `docker compose up -d --build` (com `.env.production`). Node/PM2: ver `ecosystem.config.cjs`. Coloque Nginx/Caddy com HTTPS na frente.
 
+## Áreas da ferramenta
+- **Imagem / Vídeo** (`components/Studio.jsx`): formulário dinâmico por endpoint; modo Automático escolhe texto ou imagem conforme a entrada.
+- **Lip Sync** (`components/LipSyncStudio.jsx`): usa os endpoints de lip sync do catálogo de vídeo. A voz vem de um áudio enviado ou de um texto
+  (gera a voz com um modelo TTS e usa o resultado como áudio do lip sync; são duas gerações, ambas no histórico e nos custos).
+- **Cinema** (`components/CinemaStudio.jsx`, `config/cinema.js`): o mesmo Studio com controles de câmera/lente/focal/abertura (e movimento, em vídeo)
+  transformados no prompt, como no Open Generative AI. As escolhas ficam gravadas no histórico.
+- Peças compartilhadas em `components/gen/` (geração + polling, estimativa, seletor de modelos, parâmetros, resultado).
+
 ## Estado do catálogo (validado em Sandbox)
 Todos os 562 endpoints de imagem e vídeo do OpenAPI foram exercitados em Sandbox: 536 concluem. Os demais dependem da MuAPI/conta:
 endpoints listados no OpenAPI que respondem 404 (ex.: `veo3.1-extend-video`, `grok-imagine-extend`, `*-vip-extend`), um que recusa a chave

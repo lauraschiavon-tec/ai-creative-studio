@@ -45,7 +45,7 @@ export default function CostDashboard() {
           {data.total.sandbox.generations > 0 && <div className="notice" style={{ marginBottom: 22 }}>{data.total.sandbox.generations} gerações de teste (Sandbox) não entram nos totais acima.</div>}
           <div className="stack">
             <Table title="Por usuário" rows={data.users} label={(r) => r.name || r.email || r.id.slice(0, 8)} sub={(r) => r.email} />
-            <Table title="Por estúdio" rows={data.studios} label={(r) => ({ image: 'Imagem', video: 'Vídeo' }[r.name] || r.name)} />
+            <Table title="Por estúdio" rows={data.studios} label={(r) => ({ image: 'Imagem', video: 'Vídeo (inclui Lip Sync e Cinema)', audio: 'Voz (TTS)' }[r.name] || r.name)} />
             <Table title="Por modelo" rows={data.models} label={(r) => r.name} />
           </div>
         </>

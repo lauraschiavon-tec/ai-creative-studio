@@ -79,25 +79,31 @@ async function update(id, patch) {
 const finish = (row, patch) =>
   update(row.id, { ...patch, finished_at: new Date().toISOString() });
 
-export const kindOf = (url = '') =>
-  /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) ? 'video' : /\.(mp3|wav|m4a|ogg|aac)(\?|$)/i.test(url) ? 'audio' : 'image';
+// Tipo da mídia pela extensão; se for desconhecida, usa o tipo do estúdio como pista (URLs de CDN às vezes não têm extensão).
+export function kindOf(url = '', studio = 'image') {
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)) return 'video';
+  if (/\.(mp3|wav|m4a|ogg|aac|flac)(\?|$)/i.test(url)) return 'audio';
+  if (/\.(png|jpe?g|webp|avif|gif)(\?|$)/i.test(url)) return 'image';
+  return studio === 'video' ? 'video' : studio === 'audio' ? 'audio' : 'image';
+}
 
 // Acrescenta URLs assinadas (1h) para exibir e baixar as saídas e as mídias enviadas.
 export async function withSignedUrls(rows) {
   const st = supabaseAdmin().storage;
   return Promise.all(rows.map(async (r) => {
     const outputs = await Promise.all((r.outputs || []).map(async (o, i) => {
-      if (!o.path) return { url: o.remote, downloadUrl: o.remote, kind: kindOf(o.remote) };
+      if (!o.path) return { url: o.remote, downloadUrl: o.remote, kind: kindOf(o.remote, r.studio) };
       const [view, dl] = await Promise.all([
         st.from('atelie-outputs').createSignedUrl(o.path, SIGNED_TTL),
         st.from('atelie-outputs').createSignedUrl(o.path, SIGNED_TTL, { download: `${r.model_id}-${r.id.slice(0, 8)}-${i + 1}.${o.path.split('.').pop()}` }),
       ]);
-      return { url: view.data?.signedUrl || o.remote, downloadUrl: dl.data?.signedUrl || o.remote, kind: kindOf(o.path) };
+      return { url: view.data?.signedUrl || o.remote, downloadUrl: dl.data?.signedUrl || o.remote, kind: kindOf(o.path, r.studio) };
     }));
     // input_files: [{ field, kind, path }] (linhas antigas: lista de caminhos de imagem)
     const inputs = (await Promise.all((r.input_files || []).map(async (f) => {
       const item = typeof f === 'string' ? { field: 'image', kind: 'image', path: f } : f;
-      const url = (await st.from('atelie-uploads').createSignedUrl(item.path, SIGNED_TTL)).data?.signedUrl;
+      const url = item.bucket === 'remote' ? item.path
+        : (await st.from(item.bucket === 'outputs' ? 'atelie-outputs' : 'atelie-uploads').createSignedUrl(item.path, SIGNED_TTL)).data?.signedUrl;
       return url ? { field: item.field, kind: item.kind, url } : null;
     }))).filter(Boolean);
     return { ...r, outputs, input_urls: inputs };

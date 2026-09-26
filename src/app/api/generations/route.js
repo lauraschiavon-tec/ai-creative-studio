@@ -26,7 +26,22 @@ export async function POST(req) {
   const admin = supabaseAdmin();
   const inputFiles = [];
   const sent = body.media && typeof body.media === 'object' ? body.media : {};
+  const fromGen = body.fromGenerations && typeof body.fromGenerations === 'object' ? body.fromGenerations : {};
   for (const def of model.media) {
+    const genId = typeof fromGen[def.name] === 'string' ? fromGen[def.name] : null;
+    if (genId) { // ex.: áudio gerado pelo TTS no passo anterior do Lip Sync
+      const { data: src } = await admin.from('atelie_generations').select('user_id,status,outputs').eq('id', genId).maybeSingle();
+      const out = src?.outputs?.[0];
+      if (!src || src.user_id !== s.user.id || src.status !== 'completed' || !out) return bad('A geração anterior não está disponível.');
+      let url = out.remote;
+      if (out.path) {
+        const { data } = await admin.storage.from('atelie-outputs').createSignedUrl(out.path, 6 * 3600);
+        url = data?.signedUrl || out.remote;
+      }
+      payload[def.name] = def.array ? [url] : url;
+      inputFiles.push({ field: def.name, kind: def.kind, path: out.path || out.remote, bucket: out.path ? 'outputs' : 'remote' });
+      continue;
+    }
     const paths = Array.isArray(sent[def.name]) ? sent[def.name] : [];
     if (!paths.length) { if (def.required) return bad(`Envie: ${def.title}.`); continue; }
     const max = def.array ? def.maxItems || 20 : 1;
