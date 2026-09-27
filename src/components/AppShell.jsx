@@ -11,7 +11,10 @@ export default async function AppShell({ active, admin = false, children }) {
   return (
     <>
       <header className="topbar">
-        <Link href="/" className="brand">ai-creative <small>estúdio interno</small></Link>
+        <Link href="/" className="brand">
+          <img src="/logo.png" alt="" className="brand-mark" />
+          <span className="brand-text">ai-creative</span>
+        </Link>
         <nav className="nav">
           {link('/', 'image', 'Imagem')}
           {link('/video', 'video', 'Vídeo')}

@@ -1,9 +1,7 @@
-import { Fraunces, Instrument_Sans, IBM_Plex_Mono } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 import './globals.css';
 
-const display = Fraunces({ subsets: ['latin'], variable: '--f-display', axes: ['opsz'] });
-const body = Instrument_Sans({ subsets: ['latin'], variable: '--f-body' });
-const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '600'], variable: '--f-mono' });
+const manrope = Manrope({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--f-sans' });
 
 export const metadata = {
   title: 'ai-creative — estúdio criativo interno',
@@ -13,7 +11,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR" className={`${display.variable} ${body.variable} ${mono.variable}`}>
+    <html lang="pt-BR" className={manrope.variable}>
       <body>{children}</body>
     </html>
   );

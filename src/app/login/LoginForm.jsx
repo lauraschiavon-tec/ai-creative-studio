@@ -38,12 +38,14 @@ export default function LoginForm({ supabaseUrl, supabaseKey, legacy, initialErr
   return (
     <div className="login">
       <section className="login-art">
-        <span className="brand">ai-creative <small style={{ color: '#c9bfae' }}>estúdio interno</small></span>
+        <span className="brand">
+          <img src="/logo.png" alt="" className="brand-mark" />
+          <span className="brand-text">ai-creative</span>
+        </span>
         <div>
-          <h1>Da ideia à <em>imagem</em>, sem sair da mesa.</h1>
-          <p style={{ marginTop: 22 }}>Ferramenta interna da equipe para criar imagens e vídeos com os melhores modelos, com histórico e custo de cada geração.</p>
+          <p>Ferramenta interna da equipe para criar imagens e vídeos com os melhores modelos, com histórico e custo de cada geração.</p>
         </div>
-        <span className="muted mono" style={{ color: '#8f8676' }}>Acesso restrito à equipe</span>
+        <span className="muted mono">Acesso restrito à equipe</span>
         <i className="frame" /><i className="frame b" />
       </section>
       <section className="login-form">
