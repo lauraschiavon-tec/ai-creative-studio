@@ -2,6 +2,7 @@ import { apiSession } from '@/lib/auth';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
 import { estimateCost } from '@/lib/muapi';
 import { getMode } from '@/lib/mode';
+import { directConfig, directEstimate } from '@/lib/direct';
 
 // Estimativa de custo antes de gerar (só parâmetros; sem mídia). Best-effort: nem todo modelo suporta.
 export async function POST(req) {
@@ -13,6 +14,11 @@ export async function POST(req) {
     if (!model) return Response.json({ available: false });
     const payload = buildParams(model, body.params);
     if (model.hasPrompt) payload.prompt = String(body.prompt || '').slice(0, 5000) || 'estimate';
+    const direct = body.provider === 'direct' ? directConfig(model.endpoint) : null;
+    if (direct) { // tabela local de preços do provedor (sem chamar a MuAPI); nem todo modelo tem preço fixo
+      const c = directEstimate(direct, payload);
+      return Response.json(c && typeof c.amount_usd === 'number' ? { available: true, usd: c.amount_usd, estimated: !!c.estimated } : { available: false });
+    }
     const r = await estimateCost(model.endpoint, payload, { sandbox: (await getMode(s.user)).sandbox });
     const usd = typeof r.cost === 'number' ? r.cost : r.amount_usd ?? r.cost?.amount_usd;
     return Response.json(typeof usd === 'number' ? { available: true, usd } : { available: false });

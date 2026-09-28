@@ -1,6 +1,7 @@
 import 'server-only';
 import { supabaseAdmin } from './supabase/admin';
 import { getResult } from './muapi';
+import { isDirectRow, directGetResult } from './direct';
 import { putObject, signedUrl } from './storage';
 import { store } from './generation-store';
 import { createGenerationService, extractCost, logEvent } from './generations-core';
@@ -28,8 +29,14 @@ const extFrom = (url, contentType = '') => {
   return 'jpg';
 };
 
-// Copia o resultado da MuAPI para o nosso Storage (URLs remotas podem expirar).
+// Copia o resultado para o nosso Storage (URLs remotas podem expirar). A saída é uma URL ou, nas APIs diretas síncronas, os bytes { data, mime }.
 async function persistOutput(row, url, index) {
+  if (url && typeof url === 'object' && url.data) { // os bytes só existem em memória: se falhar, LANÇA (o núcleo devolve a vez e o próximo poll tenta de novo)
+    const path = `${row.user_id}/${row.id}-${index}.${extFrom('', url.mime || '')}`;
+    const { error } = await putObject('atelie-outputs', path, url.data, { contentType: url.mime || undefined, upsert: true });
+    if (error) throw new Error(`Falha ao salvar o resultado: ${error.message || error}`);
+    return { path, remote: null };
+  }
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -47,7 +54,26 @@ async function persistOutput(row, url, index) {
 }
 
 // Polling e webhook usam o mesmo serviço (ver generations-core.js): consulta a MuAPI e finaliza a geração de forma atômica e idempotente.
-export const { syncGeneration, syncGenerationDetailed } = createGenerationService({ store, getResult, persist: persistOutput });
+// A consulta vai para a MuAPI ou, nas gerações de API direta (coluna provider ≠ muapi), para o adaptador do provedor.
+const routedGetResult = (id, o) => (isDirectRow(o?.row) ? directGetResult(o.row, id) : getResult(id, o));
+export const { syncGeneration, syncGenerationDetailed } = createGenerationService({ store, getResult: routedGetResult, persist: persistOutput });
+
+// Vigia de servidor para API direta (não há webhook): confere a geração a cada poucos segundos até terminar, mesmo com a página fechada.
+// Se o servidor reiniciar, o polling do navegador/histórico continua cobrindo os provedores assíncronos.
+export function watchDirect(rowId, { every = 5000, maxMs = 50 * 60 * 1000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  return (async () => {
+    const end = Date.now() + maxMs;
+    while (Date.now() < end) {
+      await sleep(every);
+      try {
+        const row = await store.get(rowId);
+        if (!row) return;
+        const r = await syncGenerationDetailed(row, { source: 'watch' });
+        if (r.outcome === 'finalized' || r.outcome === 'already_final') return;
+      } catch (e) { console.error('[gen] vigia:', rowId, e?.message); }
+    }
+  })();
+}
 
 const update = (id, patch) => store.update(id, patch);
 

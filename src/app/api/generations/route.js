@@ -3,7 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
 import { submit, MuapiError } from '@/lib/muapi';
 import { getMode } from '@/lib/mode';
-import { extractCost, syncGeneration, withSignedUrls, logEvent } from '@/lib/generations';
+import { extractCost, syncGeneration, withSignedUrls, logEvent, watchDirect } from '@/lib/generations';
+import { directConfig, directSubmit, providerConfigured, providerLabel } from '@/lib/direct';
 import { signedUrl } from '@/lib/storage';
 import { publicUrl } from '@/lib/public-url';
 import { webhookUrl } from '@/lib/webhook';
@@ -31,6 +32,13 @@ export async function POST(req) {
   // Mídias de referência: só caminhos do próprio usuário no bucket "uploads", nos campos que o modelo declara.
   const admin = supabaseAdmin();
   const { sandbox } = await getMode(s.user); // Sandbox (sem custo) ou Produção, conforme a caixa "Modo teste" e as travas
+
+  // Seletor MuAPI / API direta: só para os modelos mapeados em lib/direct. A API direta cobra na conta do provedor e não tem Sandbox.
+  const wantsDirect = body.provider === 'direct';
+  const direct = wantsDirect ? directConfig(model.endpoint) : null;
+  if (wantsDirect && !direct) return bad('Este modelo não tem API direta. Use a MuAPI.');
+  if (direct && sandbox) return bad('A API direta não tem Sandbox e gasta crédito real do provedor. Desmarque o "Modo teste" ou use a MuAPI.');
+  if (direct && !providerConfigured(direct.provider)) return bad(`A API direta (${providerLabel(direct.provider)}) não está configurada no servidor. Use a MuAPI.`, 503);
   const inputFiles = [];
   const sent = body.media && typeof body.media === 'object' ? body.media : {};
   const fromGen = body.fromGenerations && typeof body.fromGenerations === 'object' ? body.fromGenerations : {};
@@ -69,30 +77,42 @@ export async function POST(req) {
   const { data: row, error: insErr } = await admin.from('atelie_generations').insert({
     user_id: s.user.id, studio, mode: model.mode, model_id: model.id, model_name: model.name,
     endpoint: model.endpoint, prompt, params: body.params || {}, input_files: inputFiles,
-    sandbox, status: 'pending',
+    sandbox, status: 'pending', ...(direct ? { provider: direct.provider } : {}), // coluna da migration 005 (só a API direta depende dela)
   }).select().single();
-  if (insErr) return bad('Não foi possível registrar a geração.', 500);
+  if (insErr) {
+    if (direct && /provider/.test(insErr.message || '')) return bad('A API direta precisa da migration 005 no banco. Avise o administrador.', 503);
+    return bad('Não foi possível registrar a geração.', 500);
+  }
 
   try {
     // Telemetria: request_received → (validação, uploads assinados, insert) → POST à MuAPI → request_id.
-    const hook = webhookUrl(publicUrl(req, '/').origin, row.id); // null em dev/localhost; a MuAPI avisa por aqui quando terminar
+    const hook = direct ? null : webhookUrl(publicUrl(req, '/').origin, row.id); // null em dev/localhost; a MuAPI avisa por aqui quando terminar (API direta: vigia do servidor)
     const tSubmit = Date.now();
-    const res = await submit(model.endpoint, payload, { sandbox, webhook: hook || undefined }); // um único POST, sem retry
+    let res;
+    if (direct) { // o adaptador do provedor; um único envio, sem retry
+      const d = await directSubmit(direct, { id: row.id, payload });
+      res = { request_id: d.requestId, status: 'processing', cost: d.cost };
+    } else {
+      res = await submit(model.endpoint, payload, { sandbox, webhook: hook || undefined }); // um único POST, sem retry
+    }
     const tRequestId = Date.now();
     const requestId = res.request_id || res.id;
-    if (!requestId) throw new MuapiError('A MuAPI não retornou um identificador de geração.', 502, JSON.stringify(res).slice(0, 200));
-    const cost = extractCost(res.cost);
+    if (!requestId) throw new MuapiError(`${direct ? providerLabel(direct.provider) : 'A MuAPI'} não retornou um identificador de geração.`, 502, JSON.stringify(res).slice(0, 200));
+    const { estimated, ...cost0 } = extractCost(res.cost) || {};
+    const cost = Object.keys(cost0).length ? { ...cost0, cost_estimated: !!estimated } : null; // API direta: o valor do envio é uma estimativa
     const providerStatus = String(res.status || 'processing').toLowerCase();
     const timeline = {
       request_received_at: new Date(tReceived).toISOString(), prepare_ms: tSubmit - tReceived,
       submit_at: new Date(tSubmit).toISOString(), submit_ms: tRequestId - tSubmit, request_id_at: new Date(tRequestId).toISOString(),
       provider_status: providerStatus, status_seen: [{ s: providerStatus, at: new Date(tRequestId).toISOString(), src: 'submit' }], webhook: !!hook,
+      ...(direct ? { provider: direct.provider, provider_model: direct.model } : {}),
     };
     // cost_usd/cost_credits = cobrado (ajustado ao finalizar, ex.: zerado num reembolso); cost_reserved_* = valor original reservado no envio.
     const reserved = cost ? { cost_reserved_usd: cost.cost_usd, cost_reserved_credits: cost.cost_credits } : {};
     // store.update tolera a migration 003 ainda não aplicada (sem a coluna `timeline`, grava o resto): o request_id nunca se perde.
     const data = await store.update(row.id, { provider_request_id: requestId, status: 'processing', timeline, ...(cost || {}), ...reserved });
     logEvent('request_id', { ...row, provider_request_id: requestId, endpoint: model.endpoint }, { prepare_ms: timeline.prepare_ms, submit_ms: timeline.submit_ms, provider_status: providerStatus, webhook: !!hook, sandbox });
+    if (direct) void watchDirect(row.id); // termina a geração mesmo com a página fechada
     const synced = await syncGeneration(data || { ...row, provider_request_id: requestId, status: 'processing' }); // no sandbox já conclui na hora
     return Response.json((await withSignedUrls([synced]))[0], { status: 201 });
   } catch (e) {

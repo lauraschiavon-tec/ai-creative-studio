@@ -3,6 +3,9 @@ export const usd = (v) => {
   const n = Number(v);
   return `US$ ${n.toFixed(n !== 0 && Math.abs(n) < 1 ? 4 : 2)}`;
 };
+// Provedor da geração: 'muapi' (padrão) ou o da API direta.
+export const PROVIDER_LABEL = { muapi: 'MuAPI', byteplus: 'BytePlus', openai: 'OpenAI', google: 'Google', kling: 'Kling' };
+export const providerText = (p) => (!p || p === 'muapi' ? 'MuAPI' : `API direta · ${PROVIDER_LABEL[p] || p}`);
 export const credits = (v) => (v === null || v === undefined ? '—' : `${Number(v)} cr`);
 export const dateTime = (iso) =>
   new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });

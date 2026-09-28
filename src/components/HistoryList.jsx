@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useEffect, useState, useCallback } from 'react';
-import { usd, credits, dateTime, STATUS, isDone } from './format';
+import { usd, credits, dateTime, STATUS, isDone, providerText } from './format';
 import { MODE_LABEL, STUDIO_LABEL } from '@/config/studios';
 
 const modeText = (g) => (g.params?._cinema ? 'Cinema · ' : '') + (MODE_LABEL[g.mode] || g.studio);
@@ -115,6 +115,7 @@ function Detail({ g, onClose }) {
               <dt>Status</dt><dd><span className={`badge ${tone}`}>{label}</span> {g.sandbox && <span className="badge sand">Sandbox</span>}</dd>
               <dt>Data e hora</dt><dd>{dateTime(g.created_at)}</dd>
               <dt>Tipo</dt><dd>{STUDIO_LABEL[g.studio] || g.studio} · {modeText(g)}</dd>
+              <dt>Provedor</dt><dd>{providerText(g.provider)}</dd>
               <dt>Endpoint</dt><dd className="mono">{g.endpoint}</dd>
               <dt>Custo</dt><dd className="mono">{usd(g.cost_usd)} · {credits(g.cost_credits)}{g.cost_estimated ? ' (estimado)' : ''}{g.refunded ? ` · estornado${g.cost_reserved_usd ? ` (reservado ${usd(g.cost_reserved_usd)})` : ''}` : ''}</dd>
               <dt>ID</dt><dd className="mono">{g.provider_request_id || '—'}</dd>

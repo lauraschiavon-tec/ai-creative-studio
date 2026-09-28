@@ -26,6 +26,7 @@ export default function Studio({ studio, beforePrompt, composePrompt, meta, defa
   const [prompt, setPrompt] = useState('');
   const [params, setParams] = useState({});
   const [media, setMedia] = useState({});
+  const [source, setSource] = useState('muapi'); // 'muapi' | 'direct' — só modelos com `model.direct` oferecem a API direta
   const g = useGeneration();
 
   useEffect(() => {
@@ -72,15 +73,17 @@ export default function Studio({ studio, beforePrompt, composePrompt, meta, defa
 
   const modelKey = model?.id;
   useEffect(() => { if (model) setParams((p) => carryParams(p, model, defaultParams)); }, [modelKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!model?.direct) setSource('muapi'); }, [modelKey, model?.direct]); // eslint-disable-line react-hooks/exhaustive-deps
+  const viaDirect = source === 'direct' && !!model?.direct;
 
-  const estimate = useEstimate(studio, model, params, prompt);
+  const estimate = useEstimate(studio, model, params, prompt, viaDirect ? 'direct' : 'muapi');
 
   async function generate() {
     const sent = {};
     for (const d of model.media) if ((media[d.name] || []).length) sent[d.name] = media[d.name].map((f) => f.path);
     const finalPrompt = composePrompt ? composePrompt(prompt) : prompt;
     await g.run({
-      studio, catalogId: model.id, prompt: finalPrompt, media: sent,
+      studio, catalogId: model.id, prompt: finalPrompt, media: sent, provider: viaDirect ? 'direct' : 'muapi',
       params: { ...params, ...(meta || {}), ...(meta ? { _basePrompt: prompt } : {}) },
     });
   }
@@ -119,6 +122,19 @@ export default function Studio({ studio, beforePrompt, composePrompt, meta, defa
               </p>
             )} />
           {!activeFeatured && !listAll.length && <p className="hint">Nenhum modelo neste tipo de geração.</p>}
+          {model?.direct && (
+            <div style={{ marginTop: 14 }}>
+              <div className="chips" role="radiogroup" aria-label="Origem da geração">
+                <button role="radio" aria-checked={!viaDirect} className={`chip ${!viaDirect ? 'on' : ''}`} onClick={() => setSource('muapi')}>MuAPI</button>
+                <button role="radio" aria-checked={viaDirect} className={`chip ${viaDirect ? 'on' : ''}`} onClick={() => setSource('direct')}>API direta · {model.direct.providerLabel}</button>
+              </div>
+              {viaDirect && (
+                <p className="hint">
+                  Cobrado direto na conta do {model.direct.providerLabel} (sem Sandbox: desmarque o "Modo teste").{model.direct.note ? ` ${model.direct.note}` : ''}
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         {model && (
@@ -136,7 +152,7 @@ export default function Studio({ studio, beforePrompt, composePrompt, meta, defa
                   placeholder={promptPlaceholder || (hasFiles ? 'Descreva o que fazer com a mídia enviada…' : `Descreva o ${verb} que você quer…`)} /></label>
             )}
             <ParamsForm model={model} params={params} setParams={setParams} />
-            {model.limited && <div className="notice">Este modelo tem campos que a interface ainda não suporta; a geração pode ser recusada pela MuAPI.</div>}
+            {model.limited && !viaDirect && <div className="notice">Este modelo tem campos que a interface ainda não suporta; a geração pode ser recusada pela MuAPI.</div>}
           </section>
         )}
 

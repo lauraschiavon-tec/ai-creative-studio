@@ -41,6 +41,22 @@ Os usuários, senhas e permissões são os da Dashboard (`dashboard_users`); o A
 - **Custo efetivo x reservado**: a MuAPI informa cobrança/reembolso nos headers `x-muapi-cost-usd/-credits/-refunded` (também nos 400 de job falho, sem `cost` no corpo). `cost_usd`/`cost_credits` = o que foi **cobrado** (0 quando estornado, `refunded=true`; é o que o painel soma); `cost_reserved_usd/_credits` = valor original reservado no envio (migration `004_custo_efetivo.sql`, opcional). Falha sem informação de reembolso mantém o valor e fica `cost_estimated=true`. Falhas antigas: `npm run reconcile-refunds` (simulação) / `-- --apply`.
 - **Testes**: `npm test` (Node, sem consumir crédito: usa mocks/fetch falso e store em memória).
 
+## API direta (seletor MuAPI / API direta)
+Só os modelos abaixo têm o seletor; **todo o resto do catálogo continua só na MuAPI**. O seletor só aparece se a chave do provedor estiver no servidor (`.env.example`). Exige a migration `005_api_direta.sql` (coluna `provider`).
+
+| Modelo (endpoints da MuAPI) | Provedor | Modelo oficial | Chave |
+|---|---|---|---|
+| Seedream 5.0 (`seedream-5.0`, `-edit`, `-pro`, `-pro-edit`) | BytePlus | `seedream-5-0-260128` (Lite), `dola-seedream-5-0-pro-260628` | `BYTEPLUS_API_KEY` |
+| Seedance 2.5 (`seedance-2.5-text-to-video`, `-image-to-video`) | BytePlus | `dreamina-seedance-2-5-260628` (só até 720p, sem Draft) | `BYTEPLUS_API_KEY` |
+| GPT Image 2.5 (`gpt-image-2.5-flare|sunburst-text-to-image|image-to-image`) | OpenAI | `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst` | `OPENAI_API_KEY` |
+| Nano Banana Pro (`nano-banana-pro`, `-edit`) | Google | `gemini-3-pro-image` | `GEMINI_API_KEY` |
+| Gemini Omni Flash (`gemini-omni-flash-1-1-text-to-video`, `-image-to-video`) | Google | `gemini-omni-1.1-flash` (duração definida pelo modelo, sem seed) | `GEMINI_API_KEY` |
+| Kling 3.0 Standard/Pro/4K (`kling-v3.0-{standard,pro,4k}-{text,image}-to-video`) | Kling | `kling-v3` (`mode` std/pro/4k) | `KLING_API_KEY` |
+
+- **Código**: `src/lib/direct/` (um adaptador por provedor; `index.js` tem o mapa modelo → provedor). A geração usa o mesmo núcleo da MuAPI (`generations-core.js`): finalização atômica, custo, telemetria, histórico.
+- **Sem Sandbox**: a API direta cobra na conta do provedor. Com o "Modo teste" ligado a rota recusa e pede para usar a MuAPI.
+- **Provedores síncronos** (OpenAI, Google, Seedream) rodam em segundo plano no servidor e um vigia termina a geração mesmo com a página fechada; se o servidor reiniciar no meio, a geração vira "interrompida". **Assíncronos** (Seedance, Kling) são consultados por polling.
+- **Custo**: tokens/unidades devolvidos pelo provedor × tarifa (`src/lib/direct/pricing.js`). Onde só há tabela, a geração fica `cost_estimated`. O painel de custos separa MuAPI x API direta.
 ## Deploy
 Docker: `docker compose up -d --build` (com `.env.production`). Node/PM2: ver `ecosystem.config.cjs`. Coloque Nginx/Caddy com HTTPS na frente.
 

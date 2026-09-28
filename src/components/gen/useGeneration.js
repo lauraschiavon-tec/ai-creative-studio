@@ -46,17 +46,17 @@ export function useGeneration() {
 }
 
 // Estimativa de custo (debounce) — best-effort. null = calculando; { available: false } = indisponível.
-export function useEstimate(studio, model, params, prompt) {
+export function useEstimate(studio, model, params, prompt, provider = 'muapi') {
   const [estimate, setEstimate] = useState(null);
   const key = model?.id;
-  useEffect(() => { setEstimate(null); }, [key]);
+  useEffect(() => { setEstimate(null); }, [key, provider]);
   useEffect(() => {
     if (!model) return;
     const t = setTimeout(() => {
-      api('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studio, catalogId: model.id, prompt, params }) })
+      api('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studio, catalogId: model.id, prompt, params, provider }) })
         .then(setEstimate).catch(() => setEstimate({ available: false }));
     }, 700);
     return () => clearTimeout(t);
-  }, [model, params, prompt, studio]);
+  }, [model, params, prompt, studio, provider]);
   return estimate;
 }

@@ -14,6 +14,7 @@ export const extractCost = (c) => (c && typeof c === 'object' ? {
   cost_usd: c.amount_usd ?? null,
   cost_credits: c.amount_credits ?? null,
   refunded: c.refunded === true,
+  estimated: c.estimated === true, // APIs diretas: valor calculado por tabela/unidades, não cobrança confirmada
 } : null);
 
 // Custo efetivamente cobrado, a partir do corpo (`cost`) e dos headers (`billing`) da resposta da MuAPI.
@@ -27,7 +28,7 @@ export function resolveCost(result) {
   if (bodyRefund || b?.refunded === true) {
     return { refunded: true, usd: 0, credits: 0, source: bodyRefund ? 'body' : 'header', reported_usd: body?.cost_usd ?? b?.usd ?? null, reported_credits: body?.cost_credits ?? b?.credits ?? null };
   }
-  if (body) return { refunded: false, usd: body.cost_usd, credits: body.cost_credits, source: 'body' };
+  if (body) return { refunded: false, usd: body.cost_usd, credits: body.cost_credits, source: 'body', estimated: body.estimated };
   if (b && (b.usd != null || b.credits != null)) return { refunded: false, usd: b.usd, credits: b.credits, source: 'header' };
   return null;
 }
@@ -37,7 +38,7 @@ export function resolveCost(result) {
 export function costPatch(c, base, { failed = false } = {}) {
   const reserved = base.cost_reserved_usd == null && base.cost_usd != null ? { cost_reserved_usd: base.cost_usd, cost_reserved_credits: base.cost_credits ?? null } : {};
   if (c?.refunded) return { ...reserved, cost_usd: 0, cost_credits: 0, refunded: true, cost_estimated: false };
-  if (c) return { ...reserved, cost_usd: c.usd ?? base.cost_usd ?? null, cost_credits: c.credits ?? base.cost_credits ?? null, refunded: false, cost_estimated: false };
+  if (c) return { ...reserved, cost_usd: c.usd ?? base.cost_usd ?? null, cost_credits: c.credits ?? base.cost_credits ?? null, refunded: false, cost_estimated: !!c.estimated };
   // Sem informação de cobrança/reembolso: mantém o valor reservado, mas numa falha ele é apenas uma estimativa.
   return { cost_estimated: failed ? Number(base.cost_usd) > 0 : !!base.cost_estimated };
 }
@@ -139,7 +140,7 @@ export function createGenerationService({ store, getResult, persist, now = () =>
 
     let result;
     try {
-      result = await getResult(row.provider_request_id, { sandbox: !!row.sandbox }); // a consulta usa a mesma chave do envio
+      result = await getResult(row.provider_request_id, { sandbox: !!row.sandbox, row }); // a consulta usa a mesma chave do envio (e o mesmo provedor: MuAPI ou API direta)
     } catch (e) {
       if (e instanceof MuapiError && ageMin > MAX_MINUTES) {
         return finalize(row, source, null, () => ({ patch: { status: 'failed', error: `Tempo esgotado. ${e.message}` }, tl: { failure: { kind: 'timeout', reason: String(e.message).slice(0, 300) } } }));
