@@ -38,6 +38,7 @@ Os usuários, senhas e permissões são os da Dashboard (`dashboard_users`); o A
 - **Telemetria**: coluna `atelie_generations.timeline` (migration `003_webhook_telemetria.sql`) e logs `[gen] {json}` no container:
   `request_id` (prepare_ms, submit_ms) → `status` (cada mudança queued/processing…) → `terminal` (quem viu: poll ou webhook, após quantos ms, `provider_execution_ms`)
   → `persisted` (persist_ms) → `finalized` (total_ms). A MuAPI só informa a duração total (`executionTime`); o tempo em `queued` só aparece se o status for observado.
+- **Custo efetivo x reservado**: a MuAPI informa cobrança/reembolso nos headers `x-muapi-cost-usd/-credits/-refunded` (também nos 400 de job falho, sem `cost` no corpo). `cost_usd`/`cost_credits` = o que foi **cobrado** (0 quando estornado, `refunded=true`; é o que o painel soma); `cost_reserved_usd/_credits` = valor original reservado no envio (migration `004_custo_efetivo.sql`, opcional). Falha sem informação de reembolso mantém o valor e fica `cost_estimated=true`. Falhas antigas: `npm run reconcile-refunds` (simulação) / `-- --apply`.
 - **Testes**: `npm test` (Node, sem consumir crédito: usa mocks/fetch falso e store em memória).
 
 ## Deploy

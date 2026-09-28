@@ -2,17 +2,17 @@ import 'server-only';
 import { supabaseAdmin } from './supabase/admin';
 
 // Acesso à tabela atelie_generations usado pela finalização (polling e webhook).
-// As colunas `timeline` e `finalizing_at` vêm da migration 003. Se ela ainda não foi rodada, tudo continua funcionando
-// (sem telemetria no banco e sem a trava de finalização; a gravação final segue condicional ao status): nada quebra por ordem de deploy.
+// As colunas `timeline` e `finalizing_at` vêm da migration 003; `cost_reserved_usd/credits` da 004. Se ainda não foram rodadas, tudo continua
+// funcionando (sem telemetria/trava/valor reservado no banco; a gravação final segue condicional ao status): nada quebra por ordem de deploy.
 const OPEN = ['pending', 'processing'];
-const OPTIONAL = ['timeline', 'finalizing_at'];
+const OPTIONAL = ['timeline', 'finalizing_at', 'cost_reserved_usd', 'cost_reserved_credits'];
 let warned = false;
 
 const isMissingColumn = (e) => !!e && (e.code === 'PGRST204' || e.code === '42703' || /could not find the .* column|column .* does not exist/i.test(e.message || ''));
 function warnOnce() {
   if (warned) return;
   warned = true;
-  console.warn('[gen] colunas timeline/finalizing_at ausentes: rode supabase/migrations/003_webhook_telemetria.sql (funciona sem, mas sem telemetria no banco nem trava anti-duplicidade).');
+  console.warn('[gen] colunas opcionais ausentes: rode supabase/migrations/003_webhook_telemetria.sql e 004_custo_efetivo.sql (funciona sem, mas sem telemetria, trava anti-duplicidade e valor reservado no banco).');
 }
 const strip = (patch) => Object.fromEntries(Object.entries(patch).filter(([k]) => !OPTIONAL.includes(k)));
 

@@ -13,7 +13,18 @@ function apiKey(sandbox) {
   return key;
 }
 
-// extra: { retryable, kind, httpStatus, retryAfterMs, providerFailure }
+// Cobrança informada pela MuAPI nos headers x-muapi-cost-usd / -credits / -refunded. Vêm também nas respostas 4xx de job falho
+// (ex.: 400 com reembolso: usd=0, credits=0, refunded=true), onde o corpo não traz `cost`. Sem nenhum desses headers → null.
+// refunded: true | false | undefined (header ausente = a MuAPI não informou; NÃO significa "não reembolsado").
+export function billingFrom(headers) {
+  const g = (k) => headers?.get?.(k);
+  const [usd, credits, refunded] = [g('x-muapi-cost-usd'), g('x-muapi-cost-credits'), g('x-muapi-cost-refunded')];
+  if (usd == null && credits == null && refunded == null) return null;
+  const num = (v) => (v != null && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+  return { usd: num(usd), credits: num(credits), refunded: refunded == null ? undefined : String(refunded).trim().toLowerCase() === 'true' };
+}
+
+// extra: { retryable, kind, httpStatus, retryAfterMs, providerFailure, billing }
 //  - retryable: vale a pena consultar de novo (rede, 408, 429, 5xx, resposta ilegível). 4xx de verdade não é repetido.
 //  - providerFailure: a MuAPI respondeu 4xx com corpo { status: 'failed', error } = o JOB falhou de forma definitiva (ex.: moderação).
 export class MuapiError extends Error {
@@ -63,15 +74,20 @@ async function call(path, { method = 'GET', body, timeout = 30000, sandbox = isS
     throw new MuapiError('Não foi possível conectar à MuAPI (rede ou tempo esgotado).', 504, String(e), { retryable: true, kind: 'network' });
   }
   const text = await res.text();
+  const billing = billingFrom(res.headers);
   if (!res.ok) {
     const [m, s, d] = friendly(res.status, text);
     const ra = Number(res.headers.get('retry-after'));
     throw new MuapiError(m, s, d, {
       retryable: isRetryableStatus(res.status), kind: 'http', httpStatus: res.status,
-      retryAfterMs: Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined, providerFailure: providerFailure(res.status, text),
+      retryAfterMs: Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined, providerFailure: providerFailure(res.status, text), billing,
     });
   }
-  try { return JSON.parse(text); } catch { throw new MuapiError('Resposta inválida da MuAPI.', 502, text.slice(0, 200), { retryable: true, kind: 'parse' }); }
+  try {
+    const json = JSON.parse(text);
+    if (billing && json && typeof json === 'object' && !Array.isArray(json)) json.billing = billing;
+    return json;
+  } catch { throw new MuapiError('Resposta inválida da MuAPI.', 502, text.slice(0, 200), { retryable: true, kind: 'parse' }); }
 }
 
 // Envio: NUNCA é repetido aqui (evita geração/cobrança duplicada). `webhook` (URL https pública) faz a MuAPI avisar quando terminar.
@@ -89,7 +105,7 @@ export async function getResult(requestId, { attempts = 2, sleep = sleepMs, ...o
       return await call(`/api/v1/predictions/${encodeURIComponent(requestId)}/result`, { timeout: 15000, ...o });
     } catch (e) {
       if (e instanceof MuapiError && e.providerFailure) {
-        return { id: e.providerFailure.id || requestId, status: 'failed', error: e.providerFailure.message, http_status: e.httpStatus, provider_failure: true };
+        return { id: e.providerFailure.id || requestId, status: 'failed', error: e.providerFailure.message, http_status: e.httpStatus, provider_failure: true, ...(e.billing ? { billing: e.billing } : {}) };
       }
       if (!(e instanceof MuapiError) || !e.retryable || i >= attempts) throw e;
       await sleep(Math.min(e.retryAfterMs ?? 500 * i, 3000));

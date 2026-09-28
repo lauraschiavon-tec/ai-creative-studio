@@ -28,7 +28,7 @@ export default function ResultPanel({ gen, sessionCost, emptyTitle = 'Sua mesa e
         {gen?.status === 'failed' && (
           <div style={{ maxWidth: 460 }} className="stack">
             <div className="alert" role="alert"><b>Não foi possível gerar.</b><br />{gen.error}{genDuration(gen) !== null && <><br /><small>Encerrou após {duration(genDuration(gen))}.</small></>}</div>
-            {gen.refunded && <div className="notice">O valor desta geração foi estornado.</div>}
+            {gen.refunded && <div className="notice">O valor desta geração foi estornado — nada foi cobrado.</div>}
           </div>
         )}
         {gen?.status === 'completed' && (

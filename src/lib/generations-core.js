@@ -16,6 +16,33 @@ export const extractCost = (c) => (c && typeof c === 'object' ? {
   refunded: c.refunded === true,
 } : null);
 
+// Custo efetivamente cobrado, a partir do corpo (`cost`) e dos headers (`billing`) da resposta da MuAPI.
+//  - reembolso (corpo OU header) → refunded, valor efetivo 0;
+//  - senão, o corpo manda; sem corpo, os valores dos headers;
+//  - nada informado → null (o chamador mantém o valor reservado e marca como estimado).
+export function resolveCost(result) {
+  const body = extractCost(result?.cost);
+  const b = result?.billing || null;
+  const bodyRefund = body?.refunded === true;
+  if (bodyRefund || b?.refunded === true) {
+    return { refunded: true, usd: 0, credits: 0, source: bodyRefund ? 'body' : 'header', reported_usd: body?.cost_usd ?? b?.usd ?? null, reported_credits: body?.cost_credits ?? b?.credits ?? null };
+  }
+  if (body) return { refunded: false, usd: body.cost_usd, credits: body.cost_credits, source: 'body' };
+  if (b && (b.usd != null || b.credits != null)) return { refunded: false, usd: b.usd, credits: b.credits, source: 'header' };
+  return null;
+}
+
+// Colunas de custo a gravar ao finalizar. `cost_usd`/`cost_credits` = efetivamente cobrado (é o que o painel soma);
+// `cost_reserved_*` = valor original reservado no envio (histórico; não entra nos totais).
+export function costPatch(c, base, { failed = false } = {}) {
+  const reserved = base.cost_reserved_usd == null && base.cost_usd != null ? { cost_reserved_usd: base.cost_usd, cost_reserved_credits: base.cost_credits ?? null } : {};
+  if (c?.refunded) return { ...reserved, cost_usd: 0, cost_credits: 0, refunded: true, cost_estimated: false };
+  if (c) return { ...reserved, cost_usd: c.usd ?? base.cost_usd ?? null, cost_credits: c.credits ?? base.cost_credits ?? null, refunded: false, cost_estimated: false };
+  // Sem informação de cobrança/reembolso: mantém o valor reservado, mas numa falha ele é apenas uma estimativa.
+  return { cost_estimated: failed ? Number(base.cost_usd) > 0 : !!base.cost_estimated };
+}
+const billingNote = (c) => ({ billing: c ? { refunded: c.refunded, source: c.source, ...(c.refunded ? { reported_usd: c.reported_usd ?? null, reported_credits: c.reported_credits ?? null } : {}) } : { refunded: null, source: 'none' } });
+
 // Log estruturado de uma linha (aparece nos logs do container): "[gen] {json}". Nunca inclui chaves nem URLs assinadas.
 export function logEvent(evt, row, extra = {}) {
   const line = { evt, gen: row?.id, req: row?.provider_request_id || undefined, ep: row?.endpoint, sandbox: row?.sandbox, ...extra, at: new Date().toISOString() };
@@ -86,7 +113,7 @@ export function createGenerationService({ store, getResult, persist, now = () =>
         return { row: cur || claimed, outcome: cur && TERMINAL.has(cur.status) ? 'already_final' : 'in_progress_elsewhere' };
       }
       log('finalized', done, { status: done.status, source, total_ms: timeline.total_ms, persist_ms: timeline.persist_ms ?? null,
-        outputs: done.outputs?.length ?? 0, error: done.status === 'failed' ? String(done.error || '').slice(0, 160) : undefined });
+        outputs: done.outputs?.length ?? 0, refunded: done.refunded, cost_usd: done.cost_usd, error: done.status === 'failed' ? String(done.error || '').slice(0, 160) : undefined });
       return { row: done, outcome: 'finalized' };
     } catch (e) {
       await store.release(row.id, claimIso).catch(() => {}); // devolve a vez para o próximo poll/webhook
@@ -94,12 +121,12 @@ export function createGenerationService({ store, getResult, persist, now = () =>
     }
   }
 
-  const failedBuild = (result, cost) => () => {
+  const failedBuild = (result) => (base) => {
     const d = describeFailure(errText(result));
+    const c = resolveCost(result);
     return {
-      patch: { status: 'failed', error: d.message,
-        ...(cost?.refunded ? { cost_usd: 0, cost_credits: 0, refunded: true, cost_estimated: false } : (cost || {})) },
-      tl: { failure: { kind: d.kind, http_status: result.http_status ?? 200, reason: errText(result).slice(0, 300) } },
+      patch: { status: 'failed', error: d.message, ...costPatch(c, base, { failed: true }) },
+      tl: { failure: { kind: d.kind, http_status: result.http_status ?? 200, reason: errText(result).slice(0, 300) }, ...billingNote(c) },
     };
   };
 
@@ -124,23 +151,23 @@ export function createGenerationService({ store, getResult, persist, now = () =>
     }
 
     const status = String(result.status || '').toLowerCase();
-    const cost = extractCost(result.cost);
 
     if (OK.has(status)) {
       return finalize(row, source, result, async (base) => {
         const urls = (result.outputs || [result.url, result.output?.url]).filter(Boolean);
-        if (!urls.length) return failedBuild({ error: 'A MuAPI concluiu, mas não retornou nenhum arquivo.' }, cost)();
+        if (!urls.length) return failedBuild({ error: 'A MuAPI concluiu, mas não retornou nenhum arquivo.', cost: result.cost, billing: result.billing })(base);
         const t0 = now();
         const outputs = await Promise.all(urls.map((u, i) => persist(base, u, i)));
         const persistMs = now() - t0;
         log('persisted', base, { persist_ms: persistMs, files: outputs.length, stored: outputs.filter((o) => o.path).length });
+        const c = resolveCost(result);
         return {
-          patch: { status: 'completed', outputs, ...(cost || {}), cost_estimated: !cost && base.cost_estimated },
-          tl: { persist_ms: persistMs },
+          patch: { status: 'completed', outputs, ...costPatch(c, base) },
+          tl: { persist_ms: persistMs, ...billingNote(c) },
         };
       });
     }
-    if (FAIL.has(status)) return finalize(row, source, result, failedBuild(result, cost));
+    if (FAIL.has(status)) return finalize(row, source, result, failedBuild(result));
     if (ageMin > MAX_MINUTES) {
       return finalize(row, source, result, () => ({ patch: { status: 'failed', error: 'Tempo esgotado aguardando a MuAPI.' }, tl: { failure: { kind: 'timeout', reason: `provider_status=${status}` } } }));
     }

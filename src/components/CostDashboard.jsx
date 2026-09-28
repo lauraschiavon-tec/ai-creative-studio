@@ -42,6 +42,7 @@ export default function CostDashboard() {
             <div className="panel kpi"><div className="l">Gerações</div><div className="v">{data.total.real.generations}</div><div className="muted">{data.total.real.completed} concluídas · {data.total.real.failed} falhas</div></div>
             <div className="panel kpi"><div className="l">Custo médio por geração</div><div className="v">{usd(data.total.real.completed ? data.total.real.usd / data.total.real.completed : 0)}</div></div>
           </div>
+          {data.total.real.refunded > 0 && <div className="notice" style={{ marginBottom: 22 }}>{data.total.real.refunded} gerações estornadas pela MuAPI{data.total.real.refunded_usd > 0 ? ` (${usd(data.total.real.refunded_usd)} reservados e devolvidos)` : ''} não entram no gasto acima.</div>}
           {data.total.sandbox.generations > 0 && <div className="notice" style={{ marginBottom: 22 }}>{data.total.sandbox.generations} gerações de teste (Sandbox) não entram nos totais acima.</div>}
           <div className="stack">
             <Table title="Por usuário" rows={data.users} label={(r) => r.name || r.email || r.id.slice(0, 8)} sub={(r) => r.email} />

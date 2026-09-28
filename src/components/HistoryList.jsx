@@ -116,7 +116,7 @@ function Detail({ g, onClose }) {
               <dt>Data e hora</dt><dd>{dateTime(g.created_at)}</dd>
               <dt>Tipo</dt><dd>{STUDIO_LABEL[g.studio] || g.studio} · {modeText(g)}</dd>
               <dt>Endpoint</dt><dd className="mono">{g.endpoint}</dd>
-              <dt>Custo</dt><dd className="mono">{usd(g.cost_usd)} · {credits(g.cost_credits)}{g.cost_estimated ? ' (estimado)' : ''}{g.refunded ? ' · estornado' : ''}</dd>
+              <dt>Custo</dt><dd className="mono">{usd(g.cost_usd)} · {credits(g.cost_credits)}{g.cost_estimated ? ' (estimado)' : ''}{g.refunded ? ` · estornado${g.cost_reserved_usd ? ` (reservado ${usd(g.cost_reserved_usd)})` : ''}` : ''}</dd>
               <dt>ID</dt><dd className="mono">{g.provider_request_id || '—'}</dd>
             </dl>
             {(g.params?._basePrompt || g.prompt) && <div><div className="step" style={{ margin: '0 0 6px' }}>Prompt</div><p style={{ margin: 0 }}>{g.params?._basePrompt || g.prompt}</p>{g.params?._basePrompt && <details className="adv" style={{ marginTop: 8 }}><summary>Prompt final enviado</summary><p className="mono" style={{ margin: 0 }}>{g.prompt}</p></details>}</div>}

@@ -88,8 +88,10 @@ export async function POST(req) {
       submit_at: new Date(tSubmit).toISOString(), submit_ms: tRequestId - tSubmit, request_id_at: new Date(tRequestId).toISOString(),
       provider_status: providerStatus, status_seen: [{ s: providerStatus, at: new Date(tRequestId).toISOString(), src: 'submit' }], webhook: !!hook,
     };
+    // cost_usd/cost_credits = cobrado (ajustado ao finalizar, ex.: zerado num reembolso); cost_reserved_* = valor original reservado no envio.
+    const reserved = cost ? { cost_reserved_usd: cost.cost_usd, cost_reserved_credits: cost.cost_credits } : {};
     // store.update tolera a migration 003 ainda não aplicada (sem a coluna `timeline`, grava o resto): o request_id nunca se perde.
-    const data = await store.update(row.id, { provider_request_id: requestId, status: 'processing', timeline, ...(cost || {}) });
+    const data = await store.update(row.id, { provider_request_id: requestId, status: 'processing', timeline, ...(cost || {}), ...reserved });
     logEvent('request_id', { ...row, provider_request_id: requestId, endpoint: model.endpoint }, { prepare_ms: timeline.prepare_ms, submit_ms: timeline.submit_ms, provider_status: providerStatus, webhook: !!hook, sandbox });
     const synced = await syncGeneration(data || { ...row, provider_request_id: requestId, status: 'processing' }); // no sandbox já conclui na hora
     return Response.json((await withSignedUrls([synced]))[0], { status: 201 });
