@@ -10,6 +10,15 @@ export const dateTime = (iso) =>
 export const STATUS = {
   pending: ['Na fila', 'run'], processing: ['Gerando', 'run'], completed: ['Concluída', 'ok'], failed: ['Falhou', 'err'],
 };
+// 125000 → "2 min 05 s"; 42000 → "42 s"
+export const duration = (ms) => {
+  const t = Math.max(0, Math.round(Number(ms) / 1000));
+  if (!Number.isFinite(t)) return '—';
+  const m = Math.floor(t / 60);
+  return m ? `${m} min ${String(t % 60).padStart(2, '0')} s` : `${t} s`;
+};
+// Tempo entre criar e concluir, medido só com relógios do servidor (sem depender da hora do computador do usuário).
+export const genDuration = (g) => (g?.created_at && g?.finished_at ? Date.parse(g.finished_at) - Date.parse(g.created_at) : null);
 export const isDone = (s) => s === 'completed' || s === 'failed';
 
 const LABELS = {

@@ -15,12 +15,13 @@ export function useGeneration() {
   const [gen, setGen] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [startedAt, setStartedAt] = useState(null); // Date.now() do clique em Gerar (para mostrar o tempo decorrido)
   const [sessionCost, setSessionCost] = useState({ usd: 0, credits: 0, n: 0 });
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const run = useCallback(async (body) => {
-    setError(''); setBusy(true); setGen(null);
+    setError(''); setBusy(true); setGen(null); setStartedAt(Date.now());
     try {
       let g = await api('/api/generations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (alive.current) setGen(g);
@@ -41,7 +42,7 @@ export function useGeneration() {
     } finally { if (alive.current) setBusy(false); }
   }, []);
 
-  return { gen, busy, error, setError, sessionCost, run };
+  return { gen, busy, error, setError, sessionCost, run, startedAt };
 }
 
 // Estimativa de custo (debounce) — best-effort. null = calculando; { available: false } = indisponível.

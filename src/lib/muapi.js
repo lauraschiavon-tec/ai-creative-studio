@@ -13,8 +13,26 @@ function apiKey(sandbox) {
   return key;
 }
 
+// extra: { retryable, kind, httpStatus, retryAfterMs, providerFailure }
+//  - retryable: vale a pena consultar de novo (rede, 408, 429, 5xx, resposta ilegível). 4xx de verdade não é repetido.
+//  - providerFailure: a MuAPI respondeu 4xx com corpo { status: 'failed', error } = o JOB falhou de forma definitiva (ex.: moderação).
 export class MuapiError extends Error {
-  constructor(message, status = 502, detail) { super(message); this.status = status; this.detail = detail; }
+  constructor(message, status = 502, detail, extra = {}) { super(message); this.status = status; this.detail = detail; Object.assign(this, extra); }
+}
+
+export const isRetryableStatus = (s) => s === 408 || s === 429 || s >= 500;
+const FAILED = new Set(['failed', 'error', 'cancelled', 'canceled']);
+
+// 4xx cujo corpo diz que o job falhou: { detail: { id, status: 'failed', error } } (ou o mesmo no topo). Não vale para 408/429/5xx.
+export function providerFailure(httpStatus, text) {
+  if (httpStatus < 400 || httpStatus >= 500 || isRetryableStatus(httpStatus)) return null;
+  let j;
+  try { j = JSON.parse(text); } catch { return null; }
+  const o = j?.detail && typeof j.detail === 'object' && !Array.isArray(j.detail) ? j.detail : j;
+  if (!o || typeof o !== 'object' || !FAILED.has(String(o.status || '').toLowerCase())) return null;
+  const err = o.error ?? o.message;
+  const message = typeof err === 'string' ? err : err?.message || (err ? JSON.stringify(err) : '');
+  return { id: o.id, message: String(message || '').slice(0, 500) };
 }
 
 function friendly(status, text) {
@@ -42,14 +60,41 @@ async function call(path, { method = 'GET', body, timeout = 30000, sandbox = isS
     });
   } catch (e) {
     if (e instanceof MuapiError) throw e;
-    throw new MuapiError('Não foi possível conectar à MuAPI (rede ou tempo esgotado).', 504, String(e));
+    throw new MuapiError('Não foi possível conectar à MuAPI (rede ou tempo esgotado).', 504, String(e), { retryable: true, kind: 'network' });
   }
   const text = await res.text();
-  if (!res.ok) { const [m, s, d] = friendly(res.status, text); throw new MuapiError(m, s, d); }
-  try { return JSON.parse(text); } catch { throw new MuapiError('Resposta inválida da MuAPI.', 502, text.slice(0, 200)); }
+  if (!res.ok) {
+    const [m, s, d] = friendly(res.status, text);
+    const ra = Number(res.headers.get('retry-after'));
+    throw new MuapiError(m, s, d, {
+      retryable: isRetryableStatus(res.status), kind: 'http', httpStatus: res.status,
+      retryAfterMs: Number.isFinite(ra) && ra > 0 ? ra * 1000 : undefined, providerFailure: providerFailure(res.status, text),
+    });
+  }
+  try { return JSON.parse(text); } catch { throw new MuapiError('Resposta inválida da MuAPI.', 502, text.slice(0, 200), { retryable: true, kind: 'parse' }); }
 }
 
-export const submit = (endpoint, payload, o = {}) => call(`/api/v1/${endpoint}`, { method: 'POST', body: payload, ...o });
-export const getResult = (requestId, o = {}) => call(`/api/v1/predictions/${encodeURIComponent(requestId)}/result`, o);
+// Envio: NUNCA é repetido aqui (evita geração/cobrança duplicada). `webhook` (URL https pública) faz a MuAPI avisar quando terminar.
+export const submit = (endpoint, payload, { webhook, ...o } = {}) =>
+  call(`/api/v1/${endpoint}${webhook ? `?webhook=${encodeURIComponent(webhook)}` : ''}`, { method: 'POST', body: payload, ...o });
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Consulta do resultado. Repete (curto) só o que é passageiro: rede, 408, 429 (respeita Retry-After) e 5xx.
+// Job falho definitivo (4xx com { status: 'failed' } no corpo) NÃO é erro de consulta: volta como { status: 'failed', error }.
+// Qualquer outro 4xx é lançado como MuapiError (retryable=false).
+export async function getResult(requestId, { attempts = 2, sleep = sleepMs, ...o } = {}) {
+  for (let i = 1; ; i++) {
+    try {
+      return await call(`/api/v1/predictions/${encodeURIComponent(requestId)}/result`, { timeout: 15000, ...o });
+    } catch (e) {
+      if (e instanceof MuapiError && e.providerFailure) {
+        return { id: e.providerFailure.id || requestId, status: 'failed', error: e.providerFailure.message, http_status: e.httpStatus, provider_failure: true };
+      }
+      if (!(e instanceof MuapiError) || !e.retryable || i >= attempts) throw e;
+      await sleep(Math.min(e.retryAfterMs ?? 500 * i, 3000));
+    }
+  }
+}
 export const estimateCost = (endpoint, payload, o = {}) => call(`/api/v1/models/${endpoint}/estimate-cost`, { method: 'POST', body: payload, timeout: 8000, ...o });
 export const getBalance = () => call('/api/v1/account/balance');

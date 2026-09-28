@@ -3,12 +3,16 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getModel, isStudio, buildParams } from '@/lib/catalog';
 import { submit, MuapiError } from '@/lib/muapi';
 import { getMode } from '@/lib/mode';
-import { extractCost, syncGeneration, withSignedUrls } from '@/lib/generations';
+import { extractCost, syncGeneration, withSignedUrls, logEvent } from '@/lib/generations';
 import { signedUrl } from '@/lib/storage';
+import { publicUrl } from '@/lib/public-url';
+import { webhookUrl } from '@/lib/webhook';
+import { store } from '@/lib/generation-store';
 
 const bad = (error, status = 400) => Response.json({ error }, { status });
 
 export async function POST(req) {
+  const tReceived = Date.now();
   const s = await apiSession();
   if (s.error) return s.error;
   let body;
@@ -70,14 +74,24 @@ export async function POST(req) {
   if (insErr) return bad('Não foi possível registrar a geração.', 500);
 
   try {
-    const res = await submit(model.endpoint, payload, { sandbox });
+    // Telemetria: request_received → (validação, uploads assinados, insert) → POST à MuAPI → request_id.
+    const hook = webhookUrl(publicUrl(req, '/').origin, row.id); // null em dev/localhost; a MuAPI avisa por aqui quando terminar
+    const tSubmit = Date.now();
+    const res = await submit(model.endpoint, payload, { sandbox, webhook: hook || undefined }); // um único POST, sem retry
+    const tRequestId = Date.now();
     const requestId = res.request_id || res.id;
     if (!requestId) throw new MuapiError('A MuAPI não retornou um identificador de geração.', 502, JSON.stringify(res).slice(0, 200));
     const cost = extractCost(res.cost);
-    const { data } = await admin.from('atelie_generations').update({
-      provider_request_id: requestId, status: 'processing', ...(cost || {}),
-    }).eq('id', row.id).select().single();
-    const synced = await syncGeneration(data); // no sandbox já conclui na hora
+    const providerStatus = String(res.status || 'processing').toLowerCase();
+    const timeline = {
+      request_received_at: new Date(tReceived).toISOString(), prepare_ms: tSubmit - tReceived,
+      submit_at: new Date(tSubmit).toISOString(), submit_ms: tRequestId - tSubmit, request_id_at: new Date(tRequestId).toISOString(),
+      provider_status: providerStatus, status_seen: [{ s: providerStatus, at: new Date(tRequestId).toISOString(), src: 'submit' }], webhook: !!hook,
+    };
+    // store.update tolera a migration 003 ainda não aplicada (sem a coluna `timeline`, grava o resto): o request_id nunca se perde.
+    const data = await store.update(row.id, { provider_request_id: requestId, status: 'processing', timeline, ...(cost || {}) });
+    logEvent('request_id', { ...row, provider_request_id: requestId, endpoint: model.endpoint }, { prepare_ms: timeline.prepare_ms, submit_ms: timeline.submit_ms, provider_status: providerStatus, webhook: !!hook, sandbox });
+    const synced = await syncGeneration(data || { ...row, provider_request_id: requestId, status: 'processing' }); // no sandbox já conclui na hora
     return Response.json((await withSignedUrls([synced]))[0], { status: 201 });
   } catch (e) {
     const msg = e instanceof MuapiError ? e.message : 'Erro inesperado ao enviar a geração.';

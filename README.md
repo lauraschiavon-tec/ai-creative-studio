@@ -27,6 +27,19 @@ Os usuários, senhas e permissões são os da Dashboard (`dashboard_users`); o A
 - O histórico e o custo continuam por usuário (`atelie_generations.user_id` = `dashboard_users.id`).
 - Variáveis: `AISTUDIO_SSO_SECRET` (igual à do backend da Dashboard), `AISTUDIO_SESSION_SECRET` (opcional), `LEGACY_LOGIN` (`off` remove o login antigo por e-mail). Migration: `supabase/migrations/002_login_pela_dashboard.sql`.
 
+## Acompanhamento das gerações (polling + webhook) e telemetria
+- **Polling**: o navegador consulta `GET /api/generations/:id` a cada 3 s; o servidor consulta a MuAPI (`/predictions/{id}/result`).
+  Erro de rede, 429 (respeita `Retry-After`) e 5xx são repetidos; **4xx com `status: failed` no corpo** (ex.: moderação) encerra a geração na hora,
+  com o motivo da API na tela. O **POST de envio nunca é repetido** (evita geração/cobrança duplicada). Teto global: 45 min.
+- **Webhook**: cada envio leva `?webhook=https://<host>/api/webhooks/muapi/<geração>/<token>`. Ao terminar, a MuAPI chama essa URL e a geração é finalizada
+  (resultado copiado para o Storage) mesmo com a página fechada. O token é um HMAC por geração; o corpo do webhook só serve de gatilho (o resultado é
+  conferido de novo na MuAPI) e a finalização é atômica/idempotente (`finalizing_at`), então webhook repetido ou simultâneo com o polling não processa duas vezes.
+  Só é enviado quando o host é https público (em `localhost` não há webhook; o polling cobre). `MUAPI_WEBHOOK=off` desliga.
+- **Telemetria**: coluna `atelie_generations.timeline` (migration `003_webhook_telemetria.sql`) e logs `[gen] {json}` no container:
+  `request_id` (prepare_ms, submit_ms) → `status` (cada mudança queued/processing…) → `terminal` (quem viu: poll ou webhook, após quantos ms, `provider_execution_ms`)
+  → `persisted` (persist_ms) → `finalized` (total_ms). A MuAPI só informa a duração total (`executionTime`); o tempo em `queued` só aparece se o status for observado.
+- **Testes**: `npm test` (Node, sem consumir crédito: usa mocks/fetch falso e store em memória).
+
 ## Deploy
 Docker: `docker compose up -d --build` (com `.env.production`). Node/PM2: ver `ecosystem.config.cjs`. Coloque Nginx/Caddy com HTTPS na frente.
 

@@ -1,11 +1,12 @@
 import 'server-only';
 import { supabaseAdmin } from './supabase/admin';
-import { getResult, MuapiError } from './muapi';
+import { getResult } from './muapi';
 import { putObject, signedUrl } from './storage';
+import { store } from './generation-store';
+import { createGenerationService, extractCost, logEvent } from './generations-core';
 
-const TERMINAL = new Set(['completed', 'failed']);
-const MAX_MINUTES = 45;
 const SIGNED_TTL = 60 * 60;
+export { extractCost, logEvent };
 
 // Reparo: se uma saída ficou só com a URL remota (Storage indisponível na hora), tenta copiar de novo (até 20h após criar).
 export async function repairOutputs(row) {
@@ -15,12 +16,6 @@ export async function repairOutputs(row) {
   if (!outputs.some((o, i) => o.path && !row.outputs[i].path)) return row;
   return (await update(row.id, { outputs })) || row;
 }
-
-export const extractCost = (c) => (c && typeof c === 'object' ? {
-  cost_usd: c.amount_usd ?? null,
-  cost_credits: c.amount_credits ?? null,
-  refunded: c.refunded === true,
-} : null);
 
 const extFrom = (url, contentType = '') => {
   if (contentType.includes('mpeg') && contentType.startsWith('audio')) return 'mp3';
@@ -51,43 +46,10 @@ async function persistOutput(row, url, index) {
   }
 }
 
-// Consulta a MuAPI e finaliza a geração no banco quando terminar. Idempotente.
-export async function syncGeneration(row) {
-  if (TERMINAL.has(row.status) || !row.provider_request_id) return row;
-  const sb = supabaseAdmin();
-  const ageMin = (Date.now() - new Date(row.created_at).getTime()) / 60000;
-  let result;
-  try {
-    result = await getResult(row.provider_request_id, { sandbox: !!row.sandbox }); // a consulta usa a mesma chave do envio
-  } catch (e) {
-    if (e instanceof MuapiError && ageMin > MAX_MINUTES) return finish(row, { status: 'failed', error: `Tempo esgotado. ${e.message}` });
-    return row; // falha transitória de consulta: tenta de novo no próximo poll
-  }
-  const status = String(result.status || '').toLowerCase();
-  const cost = extractCost(result.cost);
+// Polling e webhook usam o mesmo serviço (ver generations-core.js): consulta a MuAPI e finaliza a geração de forma atômica e idempotente.
+export const { syncGeneration, syncGenerationDetailed } = createGenerationService({ store, getResult, persist: persistOutput });
 
-  if (['completed', 'succeeded', 'success'].includes(status)) {
-    const urls = (result.outputs || [result.url, result.output?.url]).filter(Boolean);
-    if (!urls.length) return finish(row, { status: 'failed', error: 'A MuAPI concluiu, mas não retornou nenhum arquivo.', ...cost });
-    const outputs = await Promise.all(urls.map((u, i) => persistOutput(row, u, i)));
-    return finish(row, { status: 'completed', outputs, ...(cost || {}), cost_estimated: !cost && row.cost_estimated });
-  }
-  if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
-    const msg = typeof result.error === 'string' ? result.error : result.error?.message || result.message || 'falha na geração';
-    return finish(row, { status: 'failed', error: `A geração falhou: ${msg}`,
-      ...(cost?.refunded ? { cost_usd: 0, cost_credits: 0, refunded: true, cost_estimated: false } : (cost || {})) });
-  }
-  if (ageMin > MAX_MINUTES) return finish(row, { status: 'failed', error: 'Tempo esgotado aguardando a MuAPI.' });
-  if (row.status !== 'processing') return update(row.id, { status: 'processing' });
-  return row;
-}
-
-async function update(id, patch) {
-  const { data } = await supabaseAdmin().from('atelie_generations').update(patch).eq('id', id).select().single();
-  return data;
-}
-const finish = (row, patch) =>
-  update(row.id, { ...patch, finished_at: new Date().toISOString() });
+const update = (id, patch) => store.update(id, patch);
 
 // Tipo da mídia pela extensão; se for desconhecida, usa o tipo do estúdio como pista (URLs de CDN às vezes não têm extensão).
 export function kindOf(url = '', studio = 'image') {

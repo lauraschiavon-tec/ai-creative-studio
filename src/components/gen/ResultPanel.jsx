@@ -1,8 +1,16 @@
 'use client';
-import { usd, credits, STATUS, isDone } from '../format';
+import { useEffect, useState } from 'react';
+import { usd, credits, STATUS, isDone, duration, genDuration } from '../format';
+
+// Cronômetro do que está em andamento (atualiza a cada segundo).
+function Elapsed({ since }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  return <span className="mono" aria-live="off">{duration(now - since)}</span>;
+}
 
 // Tela de resultado: vazio → gerando → falha → concluído (preview, download, modelo e custo) + custo da sessão.
-export default function ResultPanel({ gen, sessionCost, emptyTitle = 'Sua mesa está vazia.', emptyText, phase, note, extraCost }) {
+export default function ResultPanel({ gen, sessionCost, emptyTitle = 'Sua mesa está vazia.', emptyText, phase, note, extraCost, startedAt }) {
   return (
     <div className="stack">
       <div className="panel canvas">
@@ -14,12 +22,12 @@ export default function ResultPanel({ gen, sessionCost, emptyTitle = 'Sua mesa e
         )}
         {gen && !isDone(gen.status) && (
           <div className="developing">
-            <div className="lbl">{phase || 'Revelando…'}<small>{STATUS[gen.status]?.[0]} · {gen.model_name}</small>{note && <small>{note}</small>}</div>
+            <div className="lbl">{phase || 'Revelando…'}<small>{STATUS[gen.status]?.[0]} · {gen.model_name}{startedAt ? <> · <Elapsed since={startedAt} /></> : null}</small>{note && <small>{note}</small>}</div>
           </div>
         )}
         {gen?.status === 'failed' && (
           <div style={{ maxWidth: 460 }} className="stack">
-            <div className="alert" role="alert"><b>Não foi possível gerar.</b><br />{gen.error}</div>
+            <div className="alert" role="alert"><b>Não foi possível gerar.</b><br />{gen.error}{genDuration(gen) !== null && <><br /><small>Encerrou após {duration(genDuration(gen))}.</small></>}</div>
             {gen.refunded && <div className="notice">O valor desta geração foi estornado.</div>}
           </div>
         )}
@@ -41,6 +49,7 @@ export default function ResultPanel({ gen, sessionCost, emptyTitle = 'Sua mesa e
             <div className="meta">
               <span>Modelo <b>{gen.model_name}</b> <span className="mono">({gen.endpoint})</span></span>
               <span>Custo <b className="mono">{usd(gen.cost_usd)}</b> · <span className="mono">{credits(gen.cost_credits)}</span></span>
+              {genDuration(gen) !== null && <span>Tempo <b className="mono">{duration(genDuration(gen))}</b></span>}
               {extraCost && <span>{extraCost}</span>}
               {gen.sandbox && <span className="badge sand">Sandbox · resultado de exemplo</span>}
             </div>

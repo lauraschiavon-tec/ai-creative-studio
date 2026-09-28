@@ -155,7 +155,7 @@ export default function LipSyncStudio() {
         </section>
       </div>
 
-      <ResultPanel gen={shown} sessionCost={session} phase={phase} extraCost={ttsCost}
+      <ResultPanel gen={shown} sessionCost={session} phase={phase} extraCost={ttsCost} startedAt={tts.busy ? tts.startedAt : lip.startedAt}
         emptyTitle="Ninguém falando ainda."
         emptyText="Escolha a imagem ou vídeo, envie o áudio (ou escreva o texto) e clique em Gerar. O resultado aparece aqui, com custo e download."
         note="Pode levar alguns minutos. Pode sair: o resultado fica no Histórico." />

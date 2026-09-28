@@ -148,7 +148,7 @@ export default function Studio({ studio, beforePrompt, composePrompt, meta, defa
         </section>
       </div>
 
-      <ResultPanel gen={g.gen} sessionCost={g.sessionCost} emptyTitle={emptyTitle} emptyText={emptyText}
+      <ResultPanel gen={g.gen} sessionCost={g.sessionCost} startedAt={g.startedAt} emptyTitle={emptyTitle} emptyText={emptyText}
         note={studio === 'video' ? 'Vídeos levam alguns minutos. Pode sair: o resultado fica no Histórico.' : undefined} />
     </div>
   );
